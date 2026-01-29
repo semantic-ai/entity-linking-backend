@@ -26,11 +26,19 @@ entity-linking-backend/
 - **Web Search**: DuckDuckGo search integration for web searches without API keys.
 - **Multiple LLM Support**: Configurable to use OpenAI, Mistral, or Ollama.
 
+## Available Tools
+
+The following tools are available via the MCP server:
+
+- **search_location**: Search for a location (entity linking) based on a query, city, and country. Returns the nominatim reponse.
+- **search_web**: Search the web for additional information. Useful for general knowledge questions about persons, places, events, etc.
+- **search_sparql_docs**: Assist users in writing SPARQL queries to access resources by retrieving relevant examples and classes schema.
+- **execute_sparql_query**: Execute a SPARQL query against a SPARQL endpoint.
+
 ## Prerequisites
 
 - Python 3.10+
-- Docker & Docker Compose (optional, for searching Qdrant/Nominatim/Ollama locally)
-
+- Docker & Docker Compose
 ## Installation
 
 1.  Clone the repository.
