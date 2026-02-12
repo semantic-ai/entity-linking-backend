@@ -221,3 +221,26 @@ This service exposes a small HTTP API (FastAPI). Two commonly used endpoints are
 
     The exact event format depends on the MCP client/server interaction. For interactive usage, connect an MCP-capable client (or use the `fastmcp` client) and exchange the MCP messages over the SSE transport.
 
+
+## Configuration and Volumes
+
+To deploy with external configuration and data:
+
+1.  **External Config**: Create a directory (e.g., `config/entitylinking`) and place a `config.json` file inside it. Use `config_example.json` as a template.
+2.  **External Data**: Prepare your data directory. If you mount it to `/app/data`, it will replace the built-in data.
+3.  **Run with Docker**: Mount the config directory to `/config` and the data directory to `/app/data`.
+
+
+### Settings are resolved with the following priority (highest to lowest):
+1. Environment Variables (e.g., set in .env or Docker environment)
+2. Config File (values loaded from the external JSON configuration file)
+3. Default Values
+
+In `docker-compose.yml`, you can add:
+
+```yaml
+    volumes:
+      - ./config/entitylinking:/config
+      - ./data:/app/data
+```
+

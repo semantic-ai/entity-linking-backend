@@ -132,7 +132,7 @@ class SparqlResponse(BaseModel):
 class AgentConfig(BaseModel):
     mcp_server_url: str
     provider: str = "openai"  # or "mistral"
-    api_key: str
+    api_key: Optional[str] = None # Not needed for Ollama
     endpoint: Optional[str] = None # Can be None for Mistral
     model: str = "gpt-4.1" 
     temperature: float = 0.0

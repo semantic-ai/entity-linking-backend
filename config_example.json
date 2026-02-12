@@ -1,0 +1,13 @@
+{
+  "mcp_url": "http://localhost:80/mcp/sse",
+  "llm_provider": "openai",
+  "openai_model": "gpt-4.1",
+  "vector_store_type": "memory_embedding",
+  "endpoints": [
+    {
+      "endpoint_url": "https://centrale-vindplaats.lblod.info/sparql",
+      "void_file": "data/queries/centrale_vindplaats/centrale_vindplaats_sparql_void.ttl",
+      "examples_file": "data/queries/centrale_vindplaats/centrale_vindplaats_sparql_examples.ttl"
+    }
+  ]
+}
