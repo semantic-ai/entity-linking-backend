@@ -14,8 +14,8 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field, create_model
 
 # Clean logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("agent")
+from helpers import logger
+
 
 # --- Helper Functions ---
 
@@ -218,7 +218,6 @@ class Agent:
                 ),
                 timeout=60.0 # Timeout in seconds
             )
-            
             
             if isinstance(result, dict) and "structured_response" in result:
                 return result["structured_response"]

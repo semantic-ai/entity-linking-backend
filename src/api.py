@@ -12,8 +12,7 @@ from src.agent import Agent, AgentConfig, SparqlResponse
 from config.config import settings
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("api")
+from helpers import logger
 
 # Global agent instance
 agent_instance: Agent = None
@@ -63,6 +62,7 @@ async def run_request(request: QueryRequest):
 
 @router.post("/agent/query_structured", response_model=SparqlResponse)
 async def run_sparql_request_structured(request: SparqlRequest):
+    logger.info(f"Received structured query request: {request}")
     """Perform a structured entity linking via the agent."""
     if not agent_instance:
         raise HTTPException(status_code=500, detail="Agent not initialized")

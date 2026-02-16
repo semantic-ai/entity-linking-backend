@@ -24,8 +24,7 @@ from src.tools.nominatim_search import NominatimGeocoder
 from src.tools.web_search import DuckDuckGoSearch
 
 # Setup Logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("mcp_server")
+from helpers import logger
 
 # Prefixes and schema for validation
 prefixes_map, endpoints_void_dict = get_prefixes_and_schema_for_endpoints(endpoints)
