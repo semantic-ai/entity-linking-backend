@@ -1,7 +1,8 @@
+import asyncio
 import contextlib
 from typing import AsyncIterator
 from pydantic import BaseModel
-from src.job import process_open_tasks
+from src.job import process_open_tasks, startup_tasks
 
 from fastapi import FastAPI, APIRouter, BackgroundTasks
 from pydantic import BaseModel
@@ -23,6 +24,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     
     agent_instance = initialize_agent()
 
+    logger.info("Running startup tasks...")
+    asyncio.create_task(startup_tasks())  # Start processing tasks in the background
+    
     yield
 
 # Request Models

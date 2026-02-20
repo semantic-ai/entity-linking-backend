@@ -1,10 +1,9 @@
-import os
-import datetime
+import asyncio
 from string import Template
 import time
 
-from escape_helpers import sparql_escape_uri, sparql_escape_datetime, sparql_escape_string, sparql_escape_int
-from helpers import generate_uuid, logger, update, query
+from escape_helpers import sparql_escape_uri
+from helpers import logger, update, query
 
 from config.config import TaskOperations, settings, TaskStatus
 from src.utils.utils import get_prefixes_for_query, wait_for_triplestore
@@ -24,6 +23,7 @@ async def startup_tasks():
     logger.info(f"Failing busy tasks open tasks...")
     fail_busy_tasks()
     logger.info(f"Processing open tasks...")
+    await asyncio.sleep(5)  # Give the MCP server time to be ready
     await process_open_tasks()
     logger.info(f"Processing open tasks finished")
 

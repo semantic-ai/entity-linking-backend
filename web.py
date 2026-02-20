@@ -5,7 +5,7 @@ import builtins
 from src.job import startup_tasks
 from src.api import router, lifespan, mount_mcp
 
-from helpers import logger
+from helpers import logger, query, update
 
 # The semtech/mu-python-template injects the 'app' instance. We retrieve it here safely.
 app: FastAPI = getattr(builtins, "app", FastAPI())
@@ -26,6 +26,3 @@ app.add_middleware(
 )
 
 mount_mcp(app)
-
-logger.info("Running startup tasks...")
-startup_tasks()
