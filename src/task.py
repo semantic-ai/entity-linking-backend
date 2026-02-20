@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 import contextlib
 import time
@@ -311,7 +312,8 @@ class NamedEntityLinkingTask(Task, ABC):
         if not hasattr(self, "retries"):
             self.retries = 0
 
-        while self.retries < settings.llm_max_retries:
+        success = False
+        while not success and self.retries < settings.llm_max_retries:
             self.retries += 1
             try:
                 logger.info(f"Processing task {self.task_uri} of type {self.__task_type__}")
@@ -336,6 +338,7 @@ class NamedEntityLinkingTask(Task, ABC):
                     self.results_container_uris.append(self.create_output_container(resource=new_annotation))
                     logger.info(f"Finished creating output container for task {self.task_uri}")
 
+                success = True
             except Exception as e:
                 logger.error(f"Error processing task {self.task_uri}: {e}")
                 if self.retries >= settings.llm_max_retries:
@@ -343,4 +346,4 @@ class NamedEntityLinkingTask(Task, ABC):
                     raise
                 else:
                     logger.info(f"Retrying task {self.task_uri} (attempt {self.retries}/{settings.llm_max_retries})")
-                    time.sleep(5)  # Wait before retrying
+                    await asyncio.sleep(5)

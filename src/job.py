@@ -125,7 +125,7 @@ async def process_open_tasks():
         logger.info(f"Loaded task {task.task_uri}")
         await task.execute()
         logger.info(f"Finished processing {uri}")
-        time.sleep(100)
+        await asyncio.sleep(5)
         uri = get_one_open_task()
 
 def get_one_open_task() -> str | None:
