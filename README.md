@@ -55,6 +55,7 @@ The application is configured via environment variables:
 ```env
 # LLM Provider (openai, mistral, ollama)
 LLM_PROVIDER=openai
+LLM_MAX_RETRIES=3
 
 # OpenAI Configuration
 OPENAI_API_KEY=your_key_here
@@ -86,7 +87,7 @@ To use Ollama, set `LLM_PROVIDER=ollama` and configure the endpoints and models 
 
 Testing using following local models:
 - **Mistral Nemo**: Decent performance, functional tool-calling.
-- **Ministral-3:14b (instruct)**:  Issue with tool-calling via ollama, running via Minstral API achieves best results.
+- **Ministral-3:14b (instruct)**:  Issue with tool-calling via ollama, running via Mistral API achieves best results.
 
 ### Tool Selection for Small Models
 
@@ -244,3 +245,107 @@ In `docker-compose.yml`, you can add:
       - ./data:/app/data
 ```
 
+
+
+## Run with tasks
+
+In a previous step of the pipeline, the NER service will have detected ELI-related entities, such as mandatees, governmental bodies...
+This will used as input container for the entity linking task.
+
+### Create NEL task with governmental body as input container
+
+Open your local SPARQL query editor (by default configured to run on http://localhost:8890/sparql as set by lblod/app-decide), and run the following query to create a Task:
+```
+PREFIX adms: <http://www.w3.org/ns/adms#>
+PREFIX task: <http://redpencil.data.gift/vocabularies/tasks/>
+PREFIX dct:  <http://purl.org/dc/terms/>
+PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+PREFIX nfo:  <http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#>
+PREFIX nie:  <http://www.semanticdesktop.org/ontologies/2007/01/19/nie#>
+PREFIX mu:   <http://mu.semte.ch/vocabularies/core/>
+PREFIX skolem: <http://data.lblod.info/id/.well-known/genid/>
+PREFIX org: <http://www.w3.org/ns/org#>
+PREFIX eli: <http://data.europa.eu/eli/ontology#>
+PREFIX oa: <http://www.w3.org/ns/oa#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+INSERT DATA {
+  GRAPH <http://mu.semte.ch/graphs/harvesting> {
+    <http://data.lblod.info/id/tasks/demo-entity-linking>
+      a task:Task ;
+      mu:uuid "demo-named-entity-linking" ;
+      adms:status <http://redpencil.data.gift/id/concept/JobStatus/scheduled> ;
+      task:operation <http://lblod.data.gift/id/jobs/concept/TaskOperation/named-entity-linking> ;
+      task:inputContainer <http://data.lblod.info/id/data-container/demo-entity-linking> ;
+      dct:created "2025-10-31T09:00:00Z"^^xsd:dateTime .
+
+    <http://data.lblod.info/id/data-container/demo-entity-linking> a nfo:DataContainer ;
+        mu:uuid "f444f89b-78d9-497d-bd77-965923e9f864" ;
+        task:hasResource <http://data.lblod.info/id/annotation/3472c89c-6869-4e04-bdb3-41a46961e9ee> .
+
+    <http://data.lblod.info/id/annotation/3472c89c-6869-4e04-bdb3-41a46961e9ee> a oa:Annotation ;
+                oa:hasBody skolem:demo-entity-linking-statement ;
+                oa:hasTarget <http://data.lblod.info/id/expressions/demo-entity-linking> .
+
+    skolem:demo-entity-linking-statement a rdf:Statement ; 
+        rdf:subject <http://data.lblod.info/id/works/demo-entity-linking> ;
+        rdf:predicate eli:passed_by ;
+        rdf:object skolem:demo-entity-linking-administrative-body .
+
+    skolem:demo-entity-linking-administrative-body a <http://data.vlaanderen.be/ns/besluit#Bestuursorgaan> ;
+                                            rdfs:label "Vast Bureau" ;
+                                            dct:spatial "Gent" .
+  }
+}
+```
+
+Trigger this task using
+```
+curl -X POST http://localhost:8080/delta \
+  -H "Content-Type: application/json" \
+  -d '[
+    {
+      "inserts": [
+        {
+          "subject": { "type": "uri", "value": "http://data.lblod.info/id/tasks/demo-entity-linking" },
+          "predicate": { "type": "uri", "value": "http://www.w3.org/ns/adms#status" },
+          "object": { "type": "uri", "value": "http://redpencil.data.gift/id/concept/JobStatus/scheduled" },
+          "graph": { "type": "uri", "value": "http://mu.semte.ch/graphs/harvesting" }
+        }
+      ],
+      "deletes": []
+    }
+  ]'
+```
+
+Or restart the service to pick up open tasks.
+
+This should result in a result container added to the task:
+
+```
+<http://data.lblod.info/id/tasks/demo-entity-linking> task:resultsContainer <http://data.lblod.info/id/data-container/c703fbe0-c27c-402b-b0cb-f2ab09f6fc10> .
+
+<http://data.lblod.info/id/data-container/c703fbe0-c27c-402b-b0cb-f2ab09f6fc10>
+	rdf:type	<http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#DataContainer> ;
+	<http://mu.semte.ch/vocabularies/core/uuid>	"c703fbe0-c27c-402b-b0cb-f2ab09f6fc10" ;
+	<http://redpencil.data.gift/vocabularies/tasks/hasResource>	<http://data.lblod.info/id/annotations/70dcb9c5-ec0f-47d1-a87e-27c9fbba24e5> .
+
+<http://data.lblod.info/id/annotations/70dcb9c5-ec0f-47d1-a87e-27c9fbba24e5>
+	rdf:type	oa:Annotation ;
+	<http://mu.semte.ch/vocabularies/core/uuid>	"70dcb9c5-ec0f-47d1-a87e-27c9fbba24e5" ;
+	oa:hasTarget	<http://data.lblod.info/id/expressions/demo-entity-linking> ;
+	oa:hasBody	<http://data.lblod.info/id/.well-known/genid/demo-entity-linking-statement> .
+
+<http://data.lblod.info/id/.well-known/genid/demo-entity-linking-statement>
+	rdf:type	rdf:Statement ;
+	rdf:object	<http://data.lblod.info/id/.well-known/genid/demo-entity-linking-administrative-body> ;
+	rdf:predicate	<http://data.europa.eu/eli/ontology#passed_by> ;
+	rdf:subject	<http://data.lblod.info/id/works/demo-entity-linking> .
+
+<http://data.lblod.info/id/.well-known/genid/demo-entity-linking-administrative-body>
+	rdf:type	<http://data.vlaanderen.be/ns/besluit#Bestuursorgaan> ;
+	rdfs:label	"Vast Bureau" ;
+	dcterms:spatial	"Gent" ;
+	skos:exactMatch	<http://data.lblod.info/id/bestuursorganen/1ab898407eb44f212df82fa0293d7e67ff2fc6c866e45b5a42e6317d27e> .
+```

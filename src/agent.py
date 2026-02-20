@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from typing import Any, Dict, List, Optional, Type, Union
 
 from click import prompt
@@ -14,8 +13,8 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field, create_model
 
 # Clean logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("agent")
+from helpers import logger
+
 
 # --- Helper Functions ---
 
@@ -138,6 +137,7 @@ class AgentConfig(BaseModel):
     temperature: float = 0.0
     verbose: bool = False
     enabled_tools: Optional[List[str]] = None
+    llm_max_retries: int = 3
 
 # --- Agent Class ---
 
@@ -151,7 +151,8 @@ class Agent:
             kwargs = {
                 "model": self.config.model,
                 "api_key": self.config.api_key,
-                "temperature": self.config.temperature
+                "temperature": self.config.temperature,
+                "max_retries": self.config.llm_max_retries
             }
             if self.config.endpoint:
                 kwargs["base_url"] = self.config.endpoint
@@ -218,8 +219,7 @@ class Agent:
                 ),
                 timeout=60.0 # Timeout in seconds
             )
-            
-            
+
             if isinstance(result, dict) and "structured_response" in result:
                 return result["structured_response"]
             elif isinstance(result, SparqlResponse):
@@ -234,11 +234,19 @@ class Agent:
 
         except asyncio.TimeoutError:
             raise HTTPException(status_code=408, detail="Operation timed out after 60 seconds")
+        
         except Exception as e:
             logger.error(f"Error in sparql request: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            if e.response.status_code == 429:
+                logger.warning("Rate limited by LLM service")
+                raise HTTPException(
+                    status_code=429,
+                    detail="Upstream rate limit exceeded. Please retry later.",
+                )
+            else:
+                raise HTTPException(status_code=500, detail=str(e))
 
-    async def run_sparql_request_structured(self, entity_class: str, entity_label: str, location: str) -> SparqlResponse:
+    async def run_sparql_request_structured(self, entity_class: str, entity_label: str, location: str = "N/A") -> SparqlResponse:
         """Specific method to run the SPARQL finding task and return structured data based on structured inputs."""
       
         query_template = """Write a SPARQL query to find the URI of the {classification_class} {entity_label} in region {location}, execute it and return the results.

@@ -1,13 +1,12 @@
 from typing import List, Iterable
 from fastembed import TextEmbedding
-import logging
 
 try:
     from langchain_ollama import OllamaEmbeddings
 except ImportError:
     OllamaEmbeddings = None
 
-logger = logging.getLogger(__name__)
+from helpers import logger
 
 class EmbeddingModel:
     def __init__(self, model_name: str, provider: str = "fastembed", base_url: str = None, **kwargs):

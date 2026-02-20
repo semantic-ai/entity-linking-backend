@@ -13,7 +13,7 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue
 from config.config import settings, qdrant_client, endpoints
 from src.embeddings import EmbeddingModel
 
-logger = logging.getLogger("knowledge_base")
+from helpers import logger
 
 class KnowledgeBase(ABC):
     @abstractmethod
