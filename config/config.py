@@ -4,6 +4,7 @@ from typing import Optional, List, Any
 from pydantic import BaseModel, Field
 from qdrant_client import QdrantClient
 from sparql_llm.utils import SparqlEndpointLinks
+from enum import Enum
 
 # Load external configuration
 CONFIG_FILE = os.getenv("CONFIG_FILE", "/config/config.json")
@@ -58,7 +59,7 @@ def get_config_list(env_key: str, config_key: str, default: Optional[List[str]] 
 # 3. Default Values (defaults provided in the Field definitions below)
 class Settings(BaseModel):
     # Agent & API Configuration
-    mcp_url: str = Field(default_factory=lambda: get_config_value("MCP_SERVER_URL", "mcp_url", "http://localhost:80/mcp/sse"))
+    mcp_url: str = Field(default_factory=lambda: get_config_value("MCP_SERVER_URL", "mcp_server_url", "http://localhost:80/mcp/sse"))
     llm_provider: str = Field(default_factory=lambda: get_config_value("LLM_PROVIDER", "llm_provider", "openai").lower()) # "openai" or "mistral" or "ollama"
     
     # OpenAI Settings
@@ -88,6 +89,7 @@ class Settings(BaseModel):
     force_index: bool = Field(default_factory=lambda: get_config_bool("FORCE_INDEX", "force_index", "false"))
     auto_init: bool = Field(default_factory=lambda: get_config_bool("AUTO_INIT", "auto_init", "true"))
     temperature: float = Field(default_factory=lambda: get_config_float("TEMPERATURE", "temperature", "0.0"))
+    llm_max_retries: int = Field(default_factory=lambda: get_config_int("LLM_MAX_RETRIES", "llm_max_retries", "3"))
 
     # Legacy Tools Settings
     enable_legacy_tools: bool = Field(default_factory=lambda: get_config_bool("ENABLE_LEGACY_TOOLS", "enable_legacy_tools", "false"))
@@ -104,6 +106,21 @@ class Settings(BaseModel):
             return None, self.ollama_host, self.ollama_model
         else:
             return self.openai_api_key, self.openai_endpoint, self.openai_model
+    
+    linking_job_type: str = Field(default_factory=lambda: get_config_value("LINKING_JOB_TYPE", "linking_job_type", "http://lblod.data.gift/id/jobs/concept/JobType/entity-linking"))
+
+    resource_base: str = Field(default_factory=lambda: get_config_value("RESOURCE_BASE", "resource_base", "http://data.lblod.info/id/"))
+
+    default_graph: str = Field(default_factory=lambda: get_config_value("DEFAULT_GRAPH", "default_graph", "http://mu.semte.ch/graphs/harvesting"))    
+
+class TaskOperations(str, Enum):
+    NAMED_ENTITY_LINKING = "http://lblod.data.gift/id/jobs/concept/TaskOperation/named-entity-linking"
+
+class TaskStatus(str, Enum):
+    BUSY = "http://redpencil.data.gift/id/concept/JobStatus/busy"
+    SCHEDULED = "http://redpencil.data.gift/id/concept/JobStatus/scheduled"
+    SUCCESS = "http://redpencil.data.gift/id/concept/JobStatus/success"
+    FAILED = "http://redpencil.data.gift/id/concept/JobStatus/failed"
 
 settings = Settings()
 

@@ -1,18 +1,17 @@
 import contextlib
-import logging
-import builtins
 from typing import AsyncIterator
+from pydantic import BaseModel
+from src.job import process_open_tasks
 
-from fastapi import FastAPI, APIRouter
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 from src.mcp_server import mcp
-from src.agent import Agent, AgentConfig, SparqlResponse
-from config.config import settings
+from src.agent import Agent, SparqlResponse
 
 # Setup logging
 from helpers import logger
+from src.utils.utils import initialize_agent
 
 # Global agent instance
 agent_instance: Agent = None
@@ -22,21 +21,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """FastAPI lifespan that initializes the MCP session manager and Agent."""
     global agent_instance
     
-    # Initialize Agent
-    api_key, endpoint, model = settings.get_llm_config()
-    logger.info(f"Initializing Agent with provider={settings.llm_provider}, model={model}, endpoint={endpoint}")
-    agent_conf = AgentConfig(
-        mcp_server_url=settings.mcp_url,
-        provider=settings.llm_provider,
-        api_key=api_key,
-        endpoint=endpoint, # Can be None for Mistral
-        model=model,
-        verbose=True,
-        enabled_tools=settings.enabled_tools
-    )
-    agent_instance = Agent(agent_conf)
-    logger.info("Agent initialized successfully")
-    
+    agent_instance = initialize_agent()
+
     yield
 
 # Request Models
@@ -101,3 +87,16 @@ def mount_mcp(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to mount MCP app: {e}")
 
+class NotificationResponse(BaseModel):
+    status: str
+    message: str
+
+@router.post("/delta", status_code=202)
+def delta(background_tasks: BackgroundTasks) -> NotificationResponse:
+    # naively start processing on any incoming delta
+    logger.info("Received delta notification with")
+    background_tasks.add_task(process_open_tasks)
+    return NotificationResponse(
+        status="accepted",
+        message="Processing started",
+    )
