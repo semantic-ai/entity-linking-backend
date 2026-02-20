@@ -320,3 +320,32 @@ curl -X POST http://localhost:8080/delta \
 ```
 
 Or restart the service to pick up open tasks.
+
+This should result in a result container added to the task:
+
+```
+<http://data.lblod.info/id/tasks/demo-entity-linking> task:resultsContainer <http://data.lblod.info/id/data-container/c703fbe0-c27c-402b-b0cb-f2ab09f6fc10> .
+
+<http://data.lblod.info/id/data-container/c703fbe0-c27c-402b-b0cb-f2ab09f6fc10>
+	rdf:type	<http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#DataContainer> ;
+	<http://mu.semte.ch/vocabularies/core/uuid>	"c703fbe0-c27c-402b-b0cb-f2ab09f6fc10" ;
+	<http://redpencil.data.gift/vocabularies/tasks/hasResource>	<http://data.lblod.info/id/annotations/70dcb9c5-ec0f-47d1-a87e-27c9fbba24e5> .
+
+<http://data.lblod.info/id/annotations/70dcb9c5-ec0f-47d1-a87e-27c9fbba24e5>
+	rdf:type	oa:Annotation ;
+	<http://mu.semte.ch/vocabularies/core/uuid>	"70dcb9c5-ec0f-47d1-a87e-27c9fbba24e5" ;
+	oa:hasTarget	<http://data.lblod.info/id/expressions/demo-entity-linking> ;
+	oa:hasBody	<http://data.lblod.info/id/.well-known/genid/demo-entity-linking-statement> .
+
+<http://data.lblod.info/id/.well-known/genid/demo-entity-linking-statement>
+	rdf:type	rdf:Statement ;
+	rdf:object	<http://data.lblod.info/id/.well-known/genid/demo-entity-linking-administrative-body> ;
+	rdf:predicate	<http://data.europa.eu/eli/ontology#passed_by> ;
+	rdf:subject	<http://data.lblod.info/id/works/demo-entity-linking> .
+
+<http://data.lblod.info/id/.well-known/genid/demo-entity-linking-administrative-body>
+	rdf:type	<http://data.vlaanderen.be/ns/besluit#Bestuursorgaan> ;
+	rdfs:label	"Vast Bureau" ;
+	dcterms:spatial	"Gent" ;
+	skos:exactMatch	<http://data.lblod.info/id/bestuursorganen/1ab898407eb44f212df82fa0293d7e67ff2fc6c866e45b5a42e6317d27e> .
+```
