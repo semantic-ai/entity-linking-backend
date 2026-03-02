@@ -36,8 +36,8 @@ class QueryRequest(BaseModel):
 class SparqlRequest(BaseModel):
     entity_class: str
     entity_label: str
-    location: str
-
+    location: str = "N/A"
+    
 # Initialize the router
 router = APIRouter()
 

@@ -5,3 +5,7 @@
 *.pyc
 docker-compose.yml
 docker-compose.dev.yml
+/data/db
+docker-compose.local.yml
+ARCHITECTURE.md
+config/virtuoso/virtuoso.ini
