@@ -1,0 +1,28 @@
+{
+  "mcp_url": "http://localhost:80/mcp/sse",
+  "llm_provider": "openai",
+  "openai_model": "gpt-4.1",
+  "vector_store_type": "memory_embedding",
+  "endpoints": [
+    {
+      "endpoint_url": "http://virtuoso:8890/sparql",
+      "void_file": "data/queries/local/local_sparql_void.ttl",
+      "examples_file": "data/queries/local/local_sparql_examples.ttl"
+    }
+  ],
+  "entity_class_configs": {
+    "administrative body": {
+      "tools": [
+        "search_sparql_docs",
+        "execute_sparql_query"
+      ],
+      "query_template": "First, use the 'search_sparql_docs' tool to search for information and examples on how to query for a {classification_class}. Then, write a SPARQL query to find the URI of the {classification_class} '{entity_label}' in region '{location}'. Base your query ONLY on the retrieved documentation, using ONLY the endpoints explicitly mentioned in those examples. Execute the query using 'execute_sparql_query' and return the results. Keep iterating until you find the best possible match. Provide reasoning for your selection."
+    },
+    "location": {
+      "tools": [
+        "search_location"
+      ],
+      "query_template": "Resolve '{entity_label}' ({classification_class}) in '{location}' using the Nominatim 'search_location' tool.\n\nProcedure:\n1. Extract the most important geographic elements (street, number, city, postal code).\n2. Build a clean address query prioritizing these elements and ignoring business descriptors.\n3. Search Nominatim.\n4. If no result is returned, retry with simplified queries while keeping the key location parts.\n5. Continue until the closest valid geographic match is found.\n6. If multiple results exist, select the most precise match (prefer exact address).\n\nReturn:\n- the best matching Nominatim URI\n- a brief explanation of the selection."
+    }
+  }
+}

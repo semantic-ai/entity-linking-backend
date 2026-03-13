@@ -25,7 +25,7 @@ class NominatimGeocoder:
             await asyncio.sleep(wait)
         self._last = time.monotonic()
 
-    async def search(self, query: str, city: Optional[str] = "Gent", country: Optional[str] = "BE", limit: int = 1) -> Optional[Dict[str, Any]]:
+    async def search(self, query: str, city: Optional[str] = "Gent", country: Optional[str] = "BE,DE", limit: int = 1) -> Optional[Dict[str, Any]]:
         """
         Query /search on the Nominatim server.
         Returned dict contains: query, display_name, lat, lon, importance, place_id,

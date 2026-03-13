@@ -11,7 +11,7 @@ from fastmcp import FastMCP, settings as mcp_settings
 
 from config.config import settings, endpoints
 from src.knowledge_base import get_knowledge_base
-from src.utils.utils import format_docs
+from src.utils.utils import format_docs, _format_doc
 
 from sparql_llm.utils import get_prefixes_and_schema_for_endpoints
 from sparql_llm.validate_sparql import validate_sparql
@@ -44,7 +44,7 @@ except Exception as e:
 # --- Legacy Tools ---
 
 @mcp.tool()
-async def search_location(query: str, city: Optional[str] = "Gent", country: str = "BE") -> str:
+async def search_location(query: str, city: Optional[str] = "Gent", country: Optional[str] = "BE,DE") -> str:
     """
     Search for a location (entity linking) based on a query, city, and country.
     Returns the geocoded result including address and coordinates.
@@ -52,7 +52,7 @@ async def search_location(query: str, city: Optional[str] = "Gent", country: str
     Args:
         query (str): The location query string.
         city (Optional[str]): The city to narrow down the search.
-        country (str): The country to narrow down the search.
+        country (Optional[str]): The country to narrow down the search.
     Returns:
         str: JSON string of the geocoding result containing OpenStreetMap URI, address, latitude, and longitude.
     """
@@ -106,7 +106,10 @@ async def search_sparql_docs(question: str, potential_classes: list[str], steps:
         A formatted string containing relevant SPARQL examples and classes schema to help construct the SPARQL query.
     """
     def _sync_search():
-        relevant_docs = knowledge_base.search(question, potential_classes, steps)
+        relevant_docs = knowledge_base.search(question, potential_classes, steps)   
+        
+        logger.info(f"Formatted response for SPARQL query construction: \n{PROMPT_TOOL_SPARQL.format(docs_count=str(len(relevant_docs)), formatted_docs=format_docs(relevant_docs))}\n")
+          
         return PROMPT_TOOL_SPARQL.format(docs_count=str(len(relevant_docs)), formatted_docs=format_docs(relevant_docs))
 
     return await asyncio.to_thread(_sync_search)

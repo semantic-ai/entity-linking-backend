@@ -23,7 +23,6 @@ entity-linking-backend/
 - **SPARQL Integration**: Tools to generate and execute SPARQL queries against configured endpoints.
 - **Knowledge Base**: Uses Qdrant and FastEmbed/Ollama for semantic search over documentation and examples. (can be used without Qdrant in memory)
 - **Location Search**: Integration with Nominatim for geocoding.
-- **Web Search**: DuckDuckGo search integration for web searches without API keys.
 - **Multiple LLM Support**: Configurable to use OpenAI, Mistral, or Ollama.
 
 ## Available Tools
@@ -31,8 +30,7 @@ entity-linking-backend/
 The following tools are available via the MCP server:
 
 - **search_location**: Search for a location (entity linking) based on a query, city, and country. Returns the nominatim reponse.
-- **search_web**: Search the web for additional information. Useful for general knowledge questions about persons, places, events, etc.
-- **search_sparql_docs**: Assist users in writing SPARQL queries to access resources by retrieving relevant examples and classes schema.
+- **search_sparql_docs**: Assist the agent in writing SPARQL queries to access resources by retrieving relevant examples and classes schema.
 - **execute_sparql_query**: Execute a SPARQL query against a SPARQL endpoint.
 
 ## Prerequisites
@@ -50,7 +48,14 @@ The following tools are available via the MCP server:
 
 ## Configuration
 
-The application is configured via environment variables:
+The application is configured via environment variables and a `config.json` file. Settings are resolved with the following priority (highest to lowest):
+1. **Environment Variables** (e.g., set in `.env` or Docker environment)
+2. **Config File** (values loaded from the external JSON configuration file `config.json`)
+3. **Default Values**
+
+### Environment Variables
+
+You can set these directly or via a `.env` file:
 
 ```env
 # LLM Provider (openai, mistral, ollama)
@@ -76,34 +81,57 @@ MCP_SERVER_URL=http://localhost:80/mcp/sse
 ENABLED_TOOLS=search_sparql_docs,execute_sparql_query,search_web,search_location
 ```
 
-## Switching Providers & Tool Selection
+### Switching Providers & Local Execution
 
 The application supports multiple LLM providers including OpenAI, Mistral, and Ollama (local).
 
-### Local Execution with Ollama
-
+**Local Execution with Ollama:**
 You can run the agent locally using Ollama. This is useful for privacy or cost reasons.
 To use Ollama, set `LLM_PROVIDER=ollama` and configure the endpoints and models in the env.
 
 Testing using following local models:
-- **Mistral Nemo**: Decent performance, functional tool-calling.
+- **Mistral Nemo**: Decent performance depending on the type of query (not too complex), functional tool-calling.
 - **Ministral-3:14b (instruct)**:  Issue with tool-calling via ollama, running via Mistral API achieves best results.
 
-### Tool Selection for Small Models
+### External Config File (`config.json`) and Tool Selection
+
+To deploy with external configuration and data, you can mount a `config.json` file. Use `config_example.json` as a template.
 
 When using smaller local models (like 7B or 12B parameter models), it is highly recommended to **limit the number of enabled tools**. Smaller models can struggle with reasoning when presented with too many tools or irrelevant context.
 
-- **For Location Queries**: If you are only interested in geocoding or finding places (e.g., using Nominatim), only enable the `search_location` tool.
-- **For Mandataries/Administrative Bodies**: If you are querying SPARQL endpoints for government officials or bodies, enable only the SPARQL tools (`search_sparql_docs`, `execute_sparql_query`).
+You can set a base constraint via the `ENABLED_TOOLS` environment variable (as shown above), and you can finely control **which tools and specific query templates** are used dynamically per `entity_class` during structured requests (`/agent/query_structured`). This mapping is done through the `config.json` file.
 
-You can control this via the `ENABLED_TOOLS` environment variable:
+If this configuration is provided, the backend will JIT (Just-In-Time) spawn a lightweight router-agent with exactly the sub-selection of tools mapped for that specific task:
 
-```env
-# Only for specialized location tasks
-ENABLED_TOOLS=search_location
+**Example `config.json` integration:**
 
-# Only for SPARQL/Knowledge Base tasks
-ENABLED_TOOLS=search_sparql_docs,execute_sparql_query
+```json
+{
+  "entity_class_configs": {
+    "administrative_body": {
+      "tools": ["search_sparql_docs", "execute_sparql_query"],
+      "query_template": "Write a SPARQL query to find the URI of the {classification_class} {entity_label} in region {location}, execute it and return the results.\nKeep iterating until you find the best possible match. Provide reasoning for your selection."
+    },
+    "location": {
+      "tools": ["search_location"],
+      "query_template": "Search for the {classification_class} {entity_label} in region {location}. Return the best matching URI.\nProvide reasoning for your selection."
+    }
+  }
+}
+```
+
+### Docker Volumes for Configuration and Data
+
+1.  **External Config**: Create a directory (e.g., `config/entitylinking`) and place your `config.json` file inside it. Use `config_example.json` as a template.
+2.  **External Data**: Prepare your data directory. If you mount it to `/app/data`, it will replace the built-in data.
+3.  **Run with Docker**: Mount the config directory to `/config` and the data directory to `/app/data`.
+
+In your `docker-compose.yml`, you can add:
+
+```yaml
+    volumes:
+      - ./config/entitylinking:/config
+      - ./data:/app/data
 ```
 
 ## Usage
@@ -204,7 +232,7 @@ This service exposes a small HTTP API (FastAPI). Two commonly used endpoints are
 
     **Structured Query — `POST /agent/query_structured`**
 
-    Target specific entity classes. Currently supported classes include **Mandatary** and **Administrative Body**.
+    Target specific entity classes. Currently supported classes include: **Administrative Body**. **Mandatary** is supported but only for Flemish municiplaties, to enable it add or uncomment the "centrale vindplaats" sparql endpoint in the config.
 
     ```bash
     curl -X POST http://localhost/agent/query_structured \
@@ -221,29 +249,6 @@ This service exposes a small HTTP API (FastAPI). Two commonly used endpoints are
     ```
 
     The exact event format depends on the MCP client/server interaction. For interactive usage, connect an MCP-capable client (or use the `fastmcp` client) and exchange the MCP messages over the SSE transport.
-
-
-## Configuration and Volumes
-
-To deploy with external configuration and data:
-
-1.  **External Config**: Create a directory (e.g., `config/entitylinking`) and place a `config.json` file inside it. Use `config_example.json` as a template.
-2.  **External Data**: Prepare your data directory. If you mount it to `/app/data`, it will replace the built-in data.
-3.  **Run with Docker**: Mount the config directory to `/config` and the data directory to `/app/data`.
-
-
-### Settings are resolved with the following priority (highest to lowest):
-1. Environment Variables (e.g., set in .env or Docker environment)
-2. Config File (values loaded from the external JSON configuration file)
-3. Default Values
-
-In `docker-compose.yml`, you can add:
-
-```yaml
-    volumes:
-      - ./config/entitylinking:/config
-      - ./data:/app/data
-```
 
 
 

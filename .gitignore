@@ -9,3 +9,5 @@ docker-compose.dev.yml
 docker-compose.local.yml
 ARCHITECTURE.md
 config/virtuoso/virtuoso.ini
+/config/migrations
+test_task_flow.ipynb

@@ -2,7 +2,7 @@
 import time
 from qdrant_client.models import ScoredPoint
 from helpers import logger, query
-from config.config import settings
+from config.config import settings, entity_class_configs
 from src.agent import Agent, AgentConfig
 
 def format_docs(docs: list[ScoredPoint]) -> str:
@@ -40,7 +40,8 @@ def initialize_agent() -> Agent:
         endpoint=endpoint, # Can be None for Mistral
         model=model,
         verbose=True,
-        enabled_tools=settings.enabled_tools
+        enabled_tools=settings.enabled_tools,
+        entity_class_configs=entity_class_configs
     )
     agent_instance = Agent(agent_conf)
     logger.info("Agent initialized successfully")

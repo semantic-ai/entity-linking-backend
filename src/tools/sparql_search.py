@@ -75,7 +75,7 @@ class SparqlClient:
                     self.endpoint, 
                     params={"query": clean_query, "format": "json"},
                     headers={"Accept": "application/sparql-results+json"},
-                    timeout=60.0
+                    timeout=120
                 )
                 response.raise_for_status()
                 data = response.json()
