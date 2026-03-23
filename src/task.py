@@ -4,9 +4,7 @@ import contextlib
 import time
 
 from string import Template
-from urllib.parse import urlparse
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 from typing import Optional, Type, TypedDict
 
 from src.agent import SparqlResponse
@@ -14,6 +12,10 @@ from config.config import TaskOperations, settings, TaskStatus
 from escape_helpers import sparql_escape_uri, sparql_escape_string
 from helpers import query, update, logger
 from src.utils.utils import get_prefixes_for_query, initialize_agent
+
+# For location enrichment
+from src.utils.nominatim_parser import NominatimParser
+from src.tools.nominatim_search import NominatimGeocoder
 
 class Task(ABC):
     """Base class for background tasks that process data from the triplestore."""
@@ -139,7 +141,10 @@ class Task(ABC):
             )
         except Exception as e:
             logger.error(f"Error executing task {self.task_uri}: {e}")
-            self.change_state(TaskStatus.BUSY.value, TaskStatus.FAILED.value)
+            try:
+                self.change_state(TaskStatus.BUSY.value, TaskStatus.FAILED.value)
+            except Exception as state_err:
+                logger.error(f"Failed to update task {self.task_uri} state to FAILED: {state_err}")
             raise
 
     async def execute(self):
@@ -169,6 +174,10 @@ class NamedEntityLinkingTask(Task, ABC):
     def __init__(self, task_uri: str):
         super().__init__(task_uri)
 
+
+    def format_results_for_output(self, results: list[SparqlResponse]) -> list[NamedEntityLinkingResult]:
+        return None
+
     def fetch_data_from_input_container(self) -> dict[str, str]:
         """
         Retrieve the recognized named entity from the task's input container,
@@ -184,7 +193,7 @@ class NamedEntityLinkingTask(Task, ABC):
         q = Template(
             get_prefixes_for_query("task", "oa", "rdf", "rdfs", "dct") +
             f"""
-            SELECT ?annotation ?entityClass ?entityLabel ?location WHERE {{
+            SELECT ?annotation ?entityClass ?entityLabel ?location ?entity WHERE {{
             GRAPH <{settings.default_graph}> {{
                 $task task:inputContainer ?container .
                 ?container task:hasResource ?annotation .
@@ -215,21 +224,26 @@ class NamedEntityLinkingTask(Task, ABC):
             "entityClass": bindings[0].get("entityClass", {}).get("value"),
             "entityLabel": bindings[0].get("entityLabel", {}).get("value"),
             "location": bindings[0].get("location", {}).get("value", "Unknown location"),
+            "entity": bindings[0].get("entity", {}).get("value"),
         }
 
-    def copy_annotation(self, prev_annotation_uri: str, entity_uri: str) -> str:
+    def copy_annotation(self, prev_annotation_uri: str, entity_uri: str, extra_triples: str = "") -> str:
         """
         Function to create a copy of an annotation and add a skos:exactMatch to the found entity URI.
+        Optionally, add extra triples to the entity.
 
         Args:
             prev_annotation_uri: URI of the previous (NER) annotation
             entity_uri: URI of the found entity to be linked to the annotation
+            extra_triples: Additional N-Triples to insert into the graph for the entity.
 
         Returns:
             The created annotation URI.
         """
         new_annotation_uuid = str(uuid.uuid4())
         new_annotation_uri = f"http://data.lblod.info/id/annotations/{new_annotation_uuid}"
+
+        extra_triples_insert = "$extra_triples" if extra_triples else ""
 
         q = Template(
             get_prefixes_for_query("eli", "mu", "skos", "oa")
@@ -243,6 +257,7 @@ class NamedEntityLinkingTask(Task, ABC):
                 ?statement ?pS ?oS .
                 ?entity ?pE ?oE .
                 ?entity skos:exactMatch $entity_uri .
+                {extra_triples_insert}
             }}
             }}
             WHERE {{
@@ -263,6 +278,7 @@ class NamedEntityLinkingTask(Task, ABC):
             new_annotation=sparql_escape_uri(new_annotation_uri),
             new_uuid=sparql_escape_string(new_annotation_uuid),
             entity_uri=sparql_escape_uri(entity_uri),
+            extra_triples=extra_triples
         )
 
         update(q, sudo=True)
@@ -332,8 +348,30 @@ class NamedEntityLinkingTask(Task, ABC):
                 logger.info(f"Received result from LLM for task {self.task_uri}: {results}")
 
                 if len(results) > 0 and results[0].uri:
-                    logger.info(f"Copying annotation and linking to found URI {results[0].uri} for task {self.task_uri}")
-                    new_annotation = self.copy_annotation(prev_annotation_uri=input["annotation"], entity_uri=results[0].uri)
+                    best_uri = results[0].uri
+                    extra_triples = ""
+
+                    if "openstreetmap.org" in best_uri:
+                        try:
+                            # e.g., https://www.openstreetmap.org/way/12345
+                            parts = best_uri.rstrip('/').split('/')
+                            osm_type = parts[-2]
+                            osm_id = parts[-1]
+
+                            geocoder = NominatimGeocoder(base_url=settings.nominatim_endpoint)
+                            lookup_result = await geocoder.lookup_osm(osm_type, osm_id)
+                            
+                            if lookup_result:
+                                parser = NominatimParser()
+                                extracted_info = parser.detect_and_extract(lookup_result)
+                                # Fetch ?entity representing the annotation body
+                                subject_uri = input.get("entity")
+                                extra_triples = parser.format_triples(extracted_info, subject_uri=subject_uri)
+                        except Exception as ne:
+                            logger.error(f"Failed to fetch/parse Nominatim info for {best_uri}: {ne}")
+
+                    logger.info(f"Copying annotation and linking to found URI {best_uri} for task {self.task_uri}")
+                    new_annotation = self.copy_annotation(prev_annotation_uri=input["annotation"], entity_uri=best_uri, extra_triples=extra_triples)
                     logger.info(f"Successfully processed task {self.task_uri}, creating output container for result")
                     self.results_container_uris.append(self.create_output_container(resource=new_annotation))
                     logger.info(f"Finished creating output container for task {self.task_uri}")

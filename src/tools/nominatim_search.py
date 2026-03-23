@@ -69,6 +69,43 @@ class NominatimGeocoder:
             logger.warning("Failed parsing Nominatim JSON for %r: %s", query, exc)
             return None
 
+    async def lookup_osm(self, osm_type: str, osm_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Query /lookup on the Nominatim server by OSM type and ID.
+        """
+        await self._throttle()
+        
+        # map generic openstreetmap types to Nominatim types (N, W, R)
+        type_map = {'node': 'N', 'way': 'W', 'relation': 'R'}
+        n_type = type_map.get(osm_type.lower(), osm_type[0].upper() if osm_type else "")
+        if not n_type or not osm_id:
+            return None
+            
+        osm_ids = f"{n_type}{osm_id}"
+        
+        params = {
+            "osm_ids": osm_ids,
+            "format": "json",
+            "addressdetails": 1,
+            "polygon_geojson": 1,
+            "extratags": 1
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"{self.base_url}/lookup", params=params, timeout=self.timeout)
+                resp.raise_for_status()
+                results = resp.json()
+                if not results:
+                    return None
+                return results[0]
+        except httpx.RequestError as exc:
+            logger.warning("Nominatim request failed for %s%s: %s", osm_type, osm_id, exc)
+            return None
+        except ValueError as exc:
+            logger.warning("Failed parsing Nominatim JSON for %s%s: %s", osm_type, osm_id, exc)
+            return None
+
     def _format(self, r: Dict[str, Any], original_query: str) -> Dict[str, Any]:
         """Return compact result structure (keep only useful keys)."""
         addr = r.get("address", {})
