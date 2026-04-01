@@ -15,3 +15,4 @@ rdflib==7.1.4
 pyparsing==3.2.0
 langchain-community==0.4.1
 langchain-core==1.2.7
+shapely

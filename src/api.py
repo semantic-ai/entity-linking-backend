@@ -47,8 +47,8 @@ router = APIRouter()
 async def run_request(request: QueryRequest):
     """Perform a free-form entity linking query via the agent."""
     if not agent_instance:
-         return {"error": "Agent not initialized"}
-    return {"result": await agent_instance.run_request(request.query)}
+         raise HTTPException(status_code=500, detail="Agent not initialized")
+    return await agent_instance.run_query(request.query)
 
 @router.post("/agent/query_structured", response_model=SparqlResponse)
 async def run_sparql_request_structured(request: SparqlRequest):

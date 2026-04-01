@@ -133,6 +133,7 @@ class QdrantKnowledgeBase(KnowledgeBase):
                     query=search_embedding,
                     collection_name=settings.docs_collection_name,
                     limit=settings.default_number_of_retrieved_docs,
+                    score_threshold=settings.similarity_threshold,
                     query_filter=Filter(
                         must=[
                             FieldCondition(
@@ -156,6 +157,7 @@ class QdrantKnowledgeBase(KnowledgeBase):
                     query=search_embedding,
                     collection_name=settings.docs_collection_name,
                     limit=settings.default_number_of_retrieved_docs,
+                    score_threshold=settings.similarity_threshold,
                     query_filter=Filter(
                         must_not=[
                             FieldCondition(
@@ -263,6 +265,7 @@ class LocalEmbeddingKnowledgeBase(KnowledgeBase):
         prefix_map, _void_schema = get_prefixes_and_schema_for_endpoints(endpoints)
 
         for endpoint in endpoints:
+            logger.info(f"Loading documents from endpoint {endpoint.get('endpoint_url')}...")
             if endpoint.get("examples_file"):
                 docs += SparqlExamplesLoader(
                     endpoint.get("endpoint_url"),
@@ -276,12 +279,12 @@ class LocalEmbeddingKnowledgeBase(KnowledgeBase):
                     void_file=endpoint.get("void_file"),
                     examples_file=endpoint.get("examples_file"),
                 ).load()
-
+        logger.info(f"Loaded {len(docs)} documents into memory.")
         if not docs:
             logger.info("No documents found to index.")
             return
 
-        logger.info(f"Generating embeddings for {len(docs)} documents...")
+        
         start_time = time.time()
         
         texts = [d.page_content for d in docs]

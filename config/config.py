@@ -59,6 +59,17 @@ def convert_entity_to_mcp_class(entity: str) -> str:
         return "administrativeBody"
     else:
         return entity
+    
+def get_config_dict(env_key: str, config_key: str, default: dict) -> dict:
+    val = os.getenv(env_key)
+    if val:
+        try:
+            return json.loads(val)
+        except json.JSONDecodeError:
+            pass
+    if config_key in file_config and isinstance(file_config[config_key], dict):
+        return file_config[config_key]
+    return default
 
 # Configuration Class
 # Settings are resolved with the following priority (highest to lowest):
@@ -94,6 +105,7 @@ class Settings(BaseModel):
     qdrant_port: int = Field(default_factory=lambda: get_config_int("QDRANT_PORT", "qdrant_port", "6333"))
     
     default_number_of_retrieved_docs: int = Field(default_factory=lambda: get_config_int("DEFAULT_RETRIEVED_DOCS", "default_number_of_retrieved_docs", "3"))
+    similarity_threshold: float = Field(default_factory=lambda: get_config_float("SIMILARITY_THRESHOLD", "similarity_threshold", "0.5"))
     force_index: bool = Field(default_factory=lambda: get_config_bool("FORCE_INDEX", "force_index", "false"))
     auto_init: bool = Field(default_factory=lambda: get_config_bool("AUTO_INIT", "auto_init", "true"))
     temperature: float = Field(default_factory=lambda: get_config_float("TEMPERATURE", "temperature", "0.0"))
@@ -104,7 +116,10 @@ class Settings(BaseModel):
     nominatim_endpoint: str = Field(default_factory=lambda: get_config_value("NOMINATIM_ENDPOINT", "nominatim_endpoint", "https://nominatim.openstreetmap.org/"))
     
     # Agent Tools Configuration
-    enabled_tools: Optional[List[str]] = Field(default_factory=lambda: get_config_list("ENABLED_TOOLS", "enabled_tools", None))
+    enabled_tools: Optional[List[str]] = Field(default_factory=lambda: get_config_list("ENABLED_TOOLS", "enabled_tools", "search_location, search_sparql_docs, execute_sparql_query")) # comma-separated list of enabled tools for the agent, e.g., "search_location,search_web"
+    
+    #Stack configuration
+    mu_sparql_endpoint: str = Field(default_factory=lambda: get_config_value("MU_SPARQL_ENDPOINT", "mu_sparql_endpoint", "http://virtuoso:8890/sparql"))
 
     def get_llm_config(self):
         """Returns the API Key, Endpoint, and Model based on the selected provider."""
@@ -152,11 +167,36 @@ if not endpoints:
         #     void_file="data/queries/wikidata/wikidata_sparql_void.ttl",
         #     examples_file="data/queries/wikidata/wikidata_sparql_examples.ttl",
         # ),
+        # SparqlEndpointLinks(
+        #     endpoint_url="https://centrale-vindplaats.lblod.info/sparql",
+        #     void_file="data/queries/centrale_vindplaats/centrale_vindplaats_sparql_void.ttl",
+        #     examples_file="data/queries/centrale_vindplaats/centrale_vindplaats_sparql_examples.ttl",
+        # )
         SparqlEndpointLinks(
-            endpoint_url="https://centrale-vindplaats.lblod.info/sparql",
-            void_file="data/queries/centrale_vindplaats/centrale_vindplaats_sparql_void.ttl",
-            examples_file="data/queries/centrale_vindplaats/centrale_vindplaats_sparql_examples.ttl",
+            endpoint_url=settings.mu_sparql_endpoint,
+            void_file="data/queries/local/local_sparql_void.ttl",
+            examples_file="data/queries/local/local_sparql_examples.ttl",
         )
     ]
+
+# Entity classes configurations
+entity_class_configs = {}
+
+# Load entity classes from config file if available
+if "entity_class_configs" in file_config and isinstance(file_config["entity_class_configs"], dict):
+    entity_class_configs = file_config["entity_class_configs"]
+
+# Default entity classes if none loaded
+if not entity_class_configs:
+    entity_class_configs = {
+        "administrative_body": {
+            "tools": ["search_sparql_docs", "execute_sparql_query"],
+            "query_template": "First, use the 'search_sparql_docs' tool to search for information and examples on how to query for a {classification_class}. Then, write a SPARQL query to find the URI of the {classification_class} '{entity_label}' in region '{location}'. Base your query ONLY on the retrieved documentation, using ONLY the endpoints explicitly mentioned in those examples. Execute the query using 'execute_sparql_query' and return the results. Keep iterating until you find the best possible match. Provide reasoning for your selection."
+        },
+        "location": {
+            "tools": ["search_location"],
+            "query_template": "Search for the {classification_class} {entity_label} in region {location}. Return the best matching URI.\nProvide reasoning for your selection."
+        }
+    }
 
 qdrant_client = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)

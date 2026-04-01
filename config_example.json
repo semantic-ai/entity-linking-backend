@@ -5,9 +5,24 @@
   "vector_store_type": "memory_embedding",
   "endpoints": [
     {
-      "endpoint_url": "https://centrale-vindplaats.lblod.info/sparql",
-      "void_file": "data/queries/centrale_vindplaats/centrale_vindplaats_sparql_void.ttl",
-      "examples_file": "data/queries/centrale_vindplaats/centrale_vindplaats_sparql_examples.ttl"
+      "endpoint_url": "http://virtuoso:8890/sparql",
+      "void_file": "data/queries/local/local_sparql_void.ttl",
+      "examples_file": "data/queries/local/local_sparql_examples.ttl"
     }
-  ]
+  ],
+  "entity_class_configs": {
+    "administrative_body": {
+      "tools": [
+        "search_sparql_docs",
+        "execute_sparql_query"
+      ],
+      "query_template": "Write a SPARQL query to find the URI of the {classification_class} {entity_label} in region {location}, execute it and return the results.\nKeep iterating until you find the best possible match. Provide reasoning for your selection."
+    },
+    "location": {
+      "tools": [
+        "search_location"
+      ],
+      "query_template": "Search for the {classification_class} {entity_label} in region {location}. Return the best matching URI.\nProvide reasoning for your selection."
+    }
+  }
 }

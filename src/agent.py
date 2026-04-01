@@ -137,6 +137,7 @@ class AgentConfig(BaseModel):
     temperature: float = 0.0
     verbose: bool = False
     enabled_tools: Optional[List[str]] = None
+    entity_class_configs: Optional[Dict[str, Any]] = None
     llm_max_retries: int = 3
 
 # --- Agent Class ---
@@ -193,6 +194,7 @@ class Agent:
 
             # Convert to LangChain tools
             self.lc_tools = [create_mcp_tool(t, self.mcp_client, verbose=self.config.verbose) for t in tools_info]
+            self.cached_tools = {t.name: t for t in self.lc_tools}
             
 
             # We use tool calling agent
@@ -204,20 +206,30 @@ class Agent:
             logger.error(f"Failed to initialize agent: {e}")
             raise e
 
-
-    async def run_request(self, query: str) -> SparqlResponse:
-        """Method to run a general query via the agent and return structured data."""
-
-        if not hasattr(self, 'agent'):
+    async def _run_request(self, query: str, specific_tools: Optional[List[str]] = None) -> SparqlResponse:
+        """Internal method to run a query with optionally specific tools JIT."""
+        if not hasattr(self, 'cached_tools'):
             await self.initialize()
+
+        # Determine which tools to use for this request
+        if specific_tools is not None:
+            tools_to_use = [self.cached_tools[name] for name in specific_tools if name in self.cached_tools]
+        else:
+            tools_to_use = self.lc_tools
+
+        if not tools_to_use:
+            logger.warning("No tools available for this request.")
+
+        # JIT Agent Creation (lightweight operation)
+        temp_agent = create_agent(self.llm, tools=tools_to_use, response_format=SparqlResponse)
 
         try:
             # Use ainvoke (async) with asyncio.wait_for to enforce a strict timeout
             result = await asyncio.wait_for(
-                self.agent.ainvoke(
+                temp_agent.ainvoke(
                     {"messages": [{"role": "user", "content": query}]}
                 ),
-                timeout=60.0 # Timeout in seconds
+                timeout=120.0 # Timeout in seconds
             )
 
             if isinstance(result, dict) and "structured_response" in result:
@@ -226,18 +238,30 @@ class Agent:
                 return result
             else:
                  # Fallback/Debug
-                 logger.warning(f"Unexpected result format: {type(result)}: {result}")
+                 logger.warning(f"Unexpected result format: {type(result)}")
+                 messages = result.get("messages", []) if isinstance(result, dict) else []
+                 
+                 #self.log_agent_messages(messages, level="error")
+                 
                  # Try to force parse if it's correct type but not in dict
                  if hasattr(result, "structured_response"):
                       return result.structured_response
-                 raise ValueError("Could not find structured_response in agent output")
+                      
+                 error_msg = "Could not find structured_response in agent output."
+                 if messages:
+                     last_msg = messages[-1]
+                     content = getattr(last_msg, "content", "")
+                     if content:
+                         error_msg += f"\n\n======================Last agent response ========================\n\n {content}"
+                         
+                 raise ValueError(error_msg)
 
         except asyncio.TimeoutError:
-            raise HTTPException(status_code=408, detail="Operation timed out after 60 seconds")
+            raise HTTPException(status_code=408, detail="Operation timed out after 120 seconds")
         
         except Exception as e:
             logger.error(f"Error in sparql request: {e}")
-            if e.response.status_code == 429:
+            if hasattr(e, "response") and hasattr(e.response, "status_code") and e.response.status_code == 429:
                 logger.warning("Rate limited by LLM service")
                 raise HTTPException(
                     status_code=429,
@@ -246,15 +270,33 @@ class Agent:
             else:
                 raise HTTPException(status_code=500, detail=str(e))
 
+    async def run_request(self, query: str) -> SparqlResponse:
+        """Method to run a general query via the agent and return structured data (uses all enabled tools)."""
+        return await self._run_request(query, specific_tools=None)
+
     async def run_sparql_request_structured(self, entity_class: str, entity_label: str, location: str = "N/A") -> SparqlResponse:
         """Specific method to run the SPARQL finding task and return structured data based on structured inputs."""
       
+        # Default fallback template
         query_template = """Write a SPARQL query to find the URI of the {classification_class} {entity_label} in region {location}, execute it and return the results.
         Keep iterating until you find the best possible match. Provide reasoning for your selection."""
         
+        # Determine specific tools and query based on entity class mapping
+        specific_tools = None
+        if self.config.entity_class_configs:
+            class_key = entity_class.lower()
+            mapping = {k.lower(): v for k, v in self.config.entity_class_configs.items()}
+            logger.info(f"Looking for specific tool configuration for class '{class_key}' in mapping: {mapping.keys()}")
+            if class_key in mapping:
+                conf = mapping[class_key]
+                logger.info(f"Found specific configuration for class '{class_key}': {conf}")
+                specific_tools = conf.get("tools")
+                query_template = conf.get("query_template", query_template)
+                
         formatted_query = query_template.format(
             classification_class=entity_class, 
             entity_label=entity_label, 
             location=location
         )
-        return await self.run_request(formatted_query)
+        
+        return await self._run_request(formatted_query, specific_tools=specific_tools)
