@@ -10,10 +10,11 @@ from datetime import datetime, timezone
 from typing import Optional, Type, TypedDict
 
 from src.agent import SparqlResponse
-from config.config import TaskOperations, settings, TaskStatus
+from config.config import TaskOperations, convert_entity_to_mcp_class, settings, TaskStatus, endpoints
 from escape_helpers import sparql_escape_uri, sparql_escape_string
 from helpers import query, update, logger
 from src.utils.utils import get_prefixes_for_query, initialize_agent
+
 
 class Task(ABC):
     """Base class for background tasks that process data from the triplestore."""
@@ -130,7 +131,8 @@ class Task(ABC):
     async def run(self):
         """Async Context manager for task execution with state transitions."""
         try:
-            self.change_state(TaskStatus.SCHEDULED.value, TaskStatus.BUSY.value)
+            self.change_state(TaskStatus.SCHEDULED.value,
+                              TaskStatus.BUSY.value)
             yield
             self.change_state(
                 TaskStatus.BUSY.value,
@@ -169,37 +171,90 @@ class NamedEntityLinkingTask(Task, ABC):
     def __init__(self, task_uri: str):
         super().__init__(task_uri)
 
+    def fetch_governing_unit_uri(self) -> str:
+        """
+        Retrieve the governing unit URI provided in the input container
+        of the first task in the same job as this task.
+
+        Returns:
+            String containing the governing unit URI or
+            "Unknown URI" in case no governing unit was provided.
+        """
+        governing_unit_uri = "Unknown URI"
+
+        q = f"""
+            {get_prefixes_for_query("task", "dct", "nfo", "nie")}
+            SELECT ?resource WHERE {{
+                GRAPH <{settings.default_graph}> {{
+                    <{self.task_uri}> dct:isPartOf ?job .
+                    ?firstTask dct:isPartOf ?job ;
+                            task:index "0" ;
+                            task:inputContainer ?container .
+                    ?container task:hasResource ?resource .
+                }}
+            }}
+        """
+
+        bindings = query(q, sudo=True).get("results", {}).get("bindings", [])
+        if bindings:
+            governing_unit_uri = bindings[0]["resource"]["value"]
+
+        return governing_unit_uri
+    
+
+    def fetch_governing_unit_name(self, governing_unit_uri: str) -> str:
+        """
+        Retrieve the name of the governing unit based on its URI.
+
+        Args:
+            governing_unit_uri: String containing the URI of the governing unit
+
+        Returns:
+            String containing the name of the governing unit or
+            "Unknown name" in case the name could not be retrieved.
+        """
+        governing_unit_name = "Unknown name"
+
+        q = f"""
+            {get_prefixes_for_query("skos")}
+            SELECT ?name WHERE {{
+                {sparql_escape_uri(governing_unit_uri)} skos:prefLabel ?name .
+            }} LIMIT 1
+        """
+
+        bindings = query(q, sudo=True).get("results", {}).get("bindings", [])
+        if bindings:
+            governing_unit_name = bindings[0]["name"]["value"]
+
+        return governing_unit_name
+    
+    
+
     def fetch_data_from_input_container(self) -> dict[str, str]:
         """
-        Retrieve the recognized named entity from the task's input container,
-        originating from a NER service
-        
-        Returns:
-            Dictionary containing the annotation metadata
-                Keys:
-                    - "entityClass": str
-                    - "entityLabel": str
-                    - "location": str
+        Retrieve the recognized named entity by bridging the harvesting graph 
+        with the actual data graph.
         """
         q = Template(
             get_prefixes_for_query("task", "oa", "rdf", "rdfs", "dct") +
             f"""
             SELECT ?annotation ?entityClass ?entityLabel ?location WHERE {{
-            GRAPH <{settings.default_graph}> {{
-                $task task:inputContainer ?container .
-                ?container task:hasResource ?annotation .
-                ?annotation oa:hasBody ?statement .
-
-                ?statement rdf:predicate ?predicate .
-                ?statement rdf:object ?entity .
-
-                ?entity a ?entityClass ;
-                    rdfs:label ?entityLabel .
-
-                OPTIONAL {{
-                    ?entity dct:spatial ?location . 
+                GRAPH <{settings.default_graph}> {{
+                    $task task:inputContainer ?container .
+                    ?container task:hasResource ?annotation .
                 }}
-            }}
+
+                GRAPH <{settings.publication_graph}> {{
+                    ?annotation oa:hasBody ?statement .
+                    ?statement rdf:object ?entity .
+
+                    ?entity a ?entityClass ;
+                            rdfs:label ?entityLabel .
+
+                    OPTIONAL {{
+                        ?entity dct:spatial ?location . 
+                    }}
+                }}
             }}
             """
         ).substitute(task=sparql_escape_uri(self.task_uri))
@@ -209,13 +264,18 @@ class NamedEntityLinkingTask(Task, ABC):
         bindings = query(q, sudo=True).get("results", {}).get("bindings", [])
         if not bindings:
             return
-        
-        return {
-            "annotation": bindings[0].get("annotation", {}).get("value"),
-            "entityClass": bindings[0].get("entityClass", {}).get("value"),
-            "entityLabel": bindings[0].get("entityLabel", {}).get("value"),
-            "location": bindings[0].get("location", {}).get("value", "Unknown location"),
-        }
+
+        results = [
+            {
+                "annotation": b.get("annotation", {}).get("value"),
+                "entityClass": b.get("entityClass", {}).get("value"),
+                "entityLabel": b.get("entityLabel", {}).get("value"),
+                "location": b.get("location", {}).get("value", "Unknown location"),
+            }
+            for b in bindings[:5]
+        ]
+
+        return results
 
     def copy_annotation(self, prev_annotation_uri: str, entity_uri: str) -> str:
         """
@@ -235,7 +295,7 @@ class NamedEntityLinkingTask(Task, ABC):
             get_prefixes_for_query("eli", "mu", "skos", "oa")
             + f"""
             INSERT {{
-            GRAPH <{settings.default_graph}> {{
+            GRAPH <{settings.publication_graph}> {{
                 $new_annotation a oa:Annotation ;
                     mu:uuid $new_uuid ;
                     ?p ?o .
@@ -246,7 +306,7 @@ class NamedEntityLinkingTask(Task, ABC):
             }}
             }}
             WHERE {{
-            GRAPH <{settings.default_graph}> {{
+            GRAPH <{settings.publication_graph}> {{
                 BIND($prev_annotation_uri AS ?prevAnnotation)
                 ?prevAnnotation ?p ?o .
 
@@ -312,38 +372,64 @@ class NamedEntityLinkingTask(Task, ABC):
         if not hasattr(self, "retries"):
             self.retries = 0
 
-        success = False
-        while not success and self.retries < settings.llm_max_retries:
-            self.retries += 1
-            try:
-                logger.info(f"Processing task {self.task_uri} of type {self.__task_type__}")
-                input = self.fetch_data_from_input_container()
+        inputs = self.fetch_data_from_input_container()
 
-                logger.info(f"Fetched input for task {self.task_uri}: {input}")
+        if inputs is None:
+            success = True
+            return
 
-                logger.info(f"Sending query to LLM for task {self.task_uri} with entity class {input['entityClass']} and entity label {input['entityLabel']} and location {input['location']}")
-                
-                response: SparqlResponse = await self.agent_instance.run_sparql_request_structured(
-                    entity_class=input["entityClass"],
-                    entity_label=input["entityLabel"],
-                    location=input["location"]
-                )
-                results = response.results
-                logger.info(f"Received result from LLM for task {self.task_uri}: {results}")
+        for input in inputs:
+            success = False
+            while not success and self.retries < settings.llm_max_retries:
+                self.retries += 1
+                try:
+                    logger.info(
+                        f"Processing task {self.task_uri} of type {self.__task_type__}")
 
-                if len(results) > 0 and results[0].uri:
-                    logger.info(f"Copying annotation and linking to found URI {results[0].uri} for task {self.task_uri}")
-                    new_annotation = self.copy_annotation(prev_annotation_uri=input["annotation"], entity_uri=results[0].uri)
-                    logger.info(f"Successfully processed task {self.task_uri}, creating output container for result")
-                    self.results_container_uris.append(self.create_output_container(resource=new_annotation))
-                    logger.info(f"Finished creating output container for task {self.task_uri}")
+                    logger.info(settings)
+                    logger.info(endpoints)
+                    logger.info(
+                        f"Fetched input for task {self.task_uri}: {input}")
 
-                success = True
-            except Exception as e:
-                logger.error(f"Error processing task {self.task_uri}: {e}")
-                if self.retries >= settings.llm_max_retries:
-                    logger.error(f"Max retries reached for task {self.task_uri}. Failing task.")
-                    raise
-                else:
-                    logger.info(f"Retrying task {self.task_uri} (attempt {self.retries}/{settings.llm_max_retries})")
-                    await asyncio.sleep(5)
+                    mcp_entity_class = convert_entity_to_mcp_class(
+                        input["entityClass"])
+                    if input["location"] == "Unknown location":
+                        governing_unit_uri = self.fetch_governing_unit_uri()
+                        location = self.fetch_governing_unit_name(governing_unit_uri)
+                    else:
+                        location = input["location"]
+
+                    logger.info(
+                        f"Sending query to LLM for task {self.task_uri} with entity class {mcp_entity_class} and entity label {input['entityLabel']} and location {location}")
+
+                    response: SparqlResponse = await self.agent_instance.run_sparql_request_structured(
+                        entity_class=mcp_entity_class,
+                        entity_label=input["entityLabel"],
+                        location=location
+                    )
+                    results = response.results
+                    logger.info(
+                        f"Received result from LLM for task {self.task_uri}: {results}")
+
+                    if len(results) > 0 and results[0].uri:
+                        logger.info(
+                            f"Copying annotation and linking to found URI {results[0].uri} for task {self.task_uri}")
+                        new_annotation = self.copy_annotation(
+                            prev_annotation_uri=input["annotation"], entity_uri=results[0].uri)
+                        logger.info(
+                            f"Successfully processed task {self.task_uri}, creating output container for result")
+                        self.results_container_uris.append(
+                            self.create_output_container(resource=new_annotation))
+                        logger.info(
+                            f"Finished creating output container for task {self.task_uri}")
+
+                    success = True
+                except Exception as e:
+                    logger.error(f"Error processing task {self.task_uri}: {e}")
+                    if self.retries >= settings.llm_max_retries:
+                        logger.error(
+                            f"Max retries reached for task {self.task_uri}. Failing task.")
+                    else:
+                        logger.info(
+                            f"Retrying task {self.task_uri} (attempt {self.retries}/{settings.llm_max_retries})")
+                        await asyncio.sleep(5)

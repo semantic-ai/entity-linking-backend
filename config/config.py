@@ -52,6 +52,14 @@ def get_config_list(env_key: str, config_key: str, default: Optional[List[str]] 
         return [t.strip() for t in file_config[config_key].split(",")]
     return default
 
+def convert_entity_to_mcp_class(entity: str) -> str:
+    if "person" in entity.lower():
+        return "mandatary"
+    elif "organization" in entity.lower():
+        return "administrativeBody"
+    else:
+        return entity
+
 # Configuration Class
 # Settings are resolved with the following priority (highest to lowest):
 # 1. Environment Variables (e.g., set in .env or Docker environment)
@@ -111,7 +119,8 @@ class Settings(BaseModel):
 
     resource_base: str = Field(default_factory=lambda: get_config_value("RESOURCE_BASE", "resource_base", "http://data.lblod.info/id/"))
 
-    default_graph: str = Field(default_factory=lambda: get_config_value("DEFAULT_GRAPH", "default_graph", "http://mu.semte.ch/graphs/harvesting"))    
+    default_graph: str = Field(default_factory=lambda: get_config_value("DEFAULT_GRAPH", "default_graph", "http://mu.semte.ch/graphs/harvesting"))   
+    publication_graph: str = Field(default_factory=lambda: get_config_value("PUBLICATION_GRAPH", "publication_graph", "http://mu.semte.ch/graphs/public/pdf"))    
 
 class TaskOperations(str, Enum):
     NAMED_ENTITY_LINKING = "http://lblod.data.gift/id/jobs/concept/TaskOperation/named-entity-linking"
