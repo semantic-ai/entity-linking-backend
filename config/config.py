@@ -51,14 +51,6 @@ def get_config_list(env_key: str, config_key: str, default: Optional[List[str]] 
     if config_key in file_config and isinstance(file_config[config_key], str):
         return [t.strip() for t in file_config[config_key].split(",")]
     return default
-
-def convert_entity_to_mcp_class(entity: str) -> str:
-    if "person" in entity.lower():
-        return "mandatary"
-    elif "organization" in entity.lower():
-        return "administrativeBody"
-    else:
-        return entity
     
 def get_config_dict(env_key: str, config_key: str, default: dict) -> dict:
     val = os.getenv(env_key)

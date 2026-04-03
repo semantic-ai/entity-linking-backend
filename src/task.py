@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Type, TypedDict
 
 from src.agent import SparqlResponse
-from config.config import TaskOperations, convert_entity_to_mcp_class, settings, TaskStatus, endpoints
+from config.config import TaskOperations, settings, TaskStatus, endpoints
 from escape_helpers import sparql_escape_uri, sparql_escape_string
 from helpers import query, update, logger
 from src.utils.utils import get_prefixes_for_query, initialize_agent
@@ -277,7 +277,7 @@ class NamedEntityLinkingTask(Task, ABC):
                 "location": b.get("location", {}).get("value", "Unknown location"),
                 "entity": b.get("entity", {}).get("value"),
             }
-            for b in bindings[:5]
+            for b in bindings if not "person" in b.get("entityClass", {}).get("value", "").lower() # Excluding mandataries for now
         ]
 
         return results
@@ -402,8 +402,6 @@ class NamedEntityLinkingTask(Task, ABC):
                     logger.info(
                         f"Fetched input for task {self.task_uri}: {input}")
 
-                    mcp_entity_class = convert_entity_to_mcp_class(
-                        input["entityClass"])
                     if input["location"] == "Unknown location":
                         governing_unit_uri = self.fetch_governing_unit_uri()
                         location = self.fetch_governing_unit_name(governing_unit_uri)
@@ -411,10 +409,10 @@ class NamedEntityLinkingTask(Task, ABC):
                         location = input["location"]
 
                     logger.info(
-                        f"Sending query to LLM for task {self.task_uri} with entity class {mcp_entity_class} and entity label {input['entityLabel']} and location {location}")
+                        f"Sending query to LLM for task {self.task_uri} with entity class {input['entityClass']} and entity label {input['entityLabel']} and location {location}")
 
                     response: SparqlResponse = await self.agent_instance.run_sparql_request_structured(
-                        entity_class=mcp_entity_class,
+                        entity_class=input["entityClass"],
                         entity_label=input["entityLabel"],
                         location=location
                     )
