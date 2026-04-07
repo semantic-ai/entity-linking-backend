@@ -242,7 +242,7 @@ class NamedEntityLinkingTask(Task, ABC):
         q = Template(
             get_prefixes_for_query("task", "oa", "rdf", "rdfs", "dct") +
             f"""
-            SELECT ?annotation ?entityClass ?entityLabel ?location WHERE {{
+            SELECT ?annotation ?entity ?entityClass ?entityLabel ?location WHERE {{
                 GRAPH <{settings.default_graph}> {{
                     $task task:inputContainer ?container .
                     ?container task:hasResource ?annotation .
