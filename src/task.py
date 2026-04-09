@@ -3,6 +3,7 @@ import uuid
 import contextlib
 import time
 
+from datetime import datetime, timezone
 from string import Template
 from abc import ABC, abstractmethod
 from typing import Optional, Type, TypedDict
@@ -282,57 +283,85 @@ class NamedEntityLinkingTask(Task, ABC):
 
         return results
 
-    def copy_annotation(self, prev_annotation_uri: str, entity_uri: str, extra_triples: str = "") -> str:
+    def create_nel_annotation(self, prev_annotation_uri: str, entity_uri: str, found_uri: str, extra_triples: str = "", start_time: str = "", end_time: str = "") -> str:
         """
-        Function to create a copy of an annotation and add a skos:exactMatch to the found entity URI.
-        Optionally, add extra triples to the entity.
+        Create a new NEL (Named Entity Linking) annotation with:
+        - A new rdf:Statement body (subject=entity, predicate=skos:exactMatch, object=found_uri)
+        - Same target as the original NER annotation
+        - oa:motivatedBy oa:linking
+        - skos:exactMatch added to the entity
+        - A prov:Activity with timestamps, prov:generated, prov:wasAssociatedWith, and prov:used
 
         Args:
-            prev_annotation_uri: URI of the previous (NER) annotation
-            entity_uri: URI of the found entity to be linked to the annotation
-            extra_triples: Additional N-Triples to insert into the graph for the entity.
+            prev_annotation_uri: URI of the original NER annotation
+            entity_uri: URI of the recognized entity to enrich with skos:exactMatch
+            found_uri: URI of the matched entity discovered by the LLM
+            extra_triples: Additional N-Triples to insert into the graph for the entity
+            start_time: ISO 8601 timestamp when processing started
+            end_time: ISO 8601 timestamp when processing ended
 
         Returns:
-            The created annotation URI.
+            The created NEL annotation URI.
         """
         new_annotation_uuid = str(uuid.uuid4())
         new_annotation_uri = f"http://data.lblod.info/id/annotations/{new_annotation_uuid}"
 
+        new_statement_uuid = str(uuid.uuid4())
+        new_statement_uri = f"http://data.lblod.info/id/statements/{new_statement_uuid}"
+
+        activity_uuid = str(uuid.uuid4())
+        activity_uri = f"http://data.lblod.info/id/activities/{activity_uuid}"
+
         extra_triples_insert = "$extra_triples" if extra_triples else ""
 
         q = Template(
-            get_prefixes_for_query("eli", "mu", "skos", "oa")
+            get_prefixes_for_query("eli", "mu", "skos", "oa", "prov", "rdf", "xsd")
             + f"""
             INSERT {{
             GRAPH <{settings.publication_graph}> {{
                 $new_annotation a oa:Annotation ;
-                    mu:uuid $new_uuid ;
-                    ?p ?o .
+                    mu:uuid $new_annotation_uuid ;
+                    oa:hasBody $new_statement ;
+                    oa:motivatedBy oa:linking ;
+                    oa:hasTarget ?target .
 
-                ?statement ?pS ?oS .
-                ?entity ?pE ?oE .
-                ?entity skos:exactMatch $entity_uri .
+                $new_statement a rdf:Statement ;
+                    mu:uuid $new_statement_uuid ;
+                    rdf:subject $entity_uri ;
+                    rdf:predicate skos:exactMatch ;
+                    rdf:object $entity_uri .
+
+                $entity_uri skos:exactMatch $found_uri .
                 {extra_triples_insert}
+
+                $activity a prov:Activity ;
+                    mu:uuid $activity_uuid ;
+                    prov:generated $new_annotation ;
+                    prov:wasAssociatedWith $agent_uri ;
+                    prov:used ?target ;
+                    prov:startedAtTime $start_time ;
+                    prov:endedAtTime $end_time .
             }}
             }}
             WHERE {{
             GRAPH <{settings.publication_graph}> {{
-                BIND($prev_annotation_uri AS ?prevAnnotation)
-                ?prevAnnotation ?p ?o .
-
-                ?prevAnnotation oa:hasBody ?statement .
-                ?statement ?pS ?oS .
-
-                ?statement rdf:object ?entity .
-                ?entity ?pE ?oE .
+                $prev_annotation_uri oa:hasTarget ?target .
             }}
             }}
             """
         ).substitute(
             prev_annotation_uri=sparql_escape_uri(prev_annotation_uri),
             new_annotation=sparql_escape_uri(new_annotation_uri),
-            new_uuid=sparql_escape_string(new_annotation_uuid),
+            new_annotation_uuid=sparql_escape_string(new_annotation_uuid),
+            new_statement=sparql_escape_uri(new_statement_uri),
+            new_statement_uuid=sparql_escape_string(new_statement_uuid),
             entity_uri=sparql_escape_uri(entity_uri),
+            found_uri=sparql_escape_uri(found_uri),
+            activity=sparql_escape_uri(activity_uri),
+            activity_uuid=sparql_escape_string(activity_uuid),
+            agent_uri=sparql_escape_uri(settings.nel_agent_uri),
+            start_time=f'"{start_time}"^^xsd:dateTime',
+            end_time=f'"{end_time}"^^xsd:dateTime',
             extra_triples=extra_triples
         )
 
@@ -378,7 +407,7 @@ class NamedEntityLinkingTask(Task, ABC):
         Implementation of Task's process function that
          - retrieves the recognized Named Entity from the task's input data container
          - sends query to LLM to retrieve the URI of the entity based on its class, label and (optionally) location
-         - creates a copy of the input annotation and adds a skos:exactMatch to the found URI
+         - creates a new NEL annotation referencing the original, adds skos:exactMatch and provenance
         """
         if not hasattr(self, "retries"):
             self.retries = 0
@@ -410,6 +439,8 @@ class NamedEntityLinkingTask(Task, ABC):
 
                     logger.info(
                         f"Sending query to LLM for task {self.task_uri} with entity class {input['entityClass']} and entity label {input['entityLabel']} and location {location}")
+
+                    start_time = datetime.now(timezone.utc).isoformat()
 
                     response: SparqlResponse = await self.agent_instance.run_sparql_request_structured(
                         entity_class=input["entityClass"],
@@ -443,8 +474,17 @@ class NamedEntityLinkingTask(Task, ABC):
                             except Exception as ne:
                                 logger.error(f"Failed to fetch/parse Nominatim info for {best_uri}: {ne}")
 
-                        logger.info(f"Copying annotation and linking to found URI {best_uri} for task {self.task_uri}")
-                        new_annotation = self.copy_annotation(prev_annotation_uri=input["annotation"], entity_uri=best_uri, extra_triples=extra_triples)
+                        end_time = datetime.now(timezone.utc).isoformat()
+
+                        logger.info(f"Creating NEL annotation and linking to found URI {best_uri} for {input['entity']} of task {self.task_uri}")
+                        new_annotation = self.create_nel_annotation(
+                            prev_annotation_uri=input["annotation"],
+                            entity_uri=input["entity"],
+                            found_uri=best_uri,
+                            extra_triples=extra_triples,
+                            start_time=start_time,
+                            end_time=end_time
+                        )
                         logger.info(f"Successfully processed task {self.task_uri}, creating output container for result")
                         self.results_container_uris.append(self.create_output_container(resource=new_annotation))
                         logger.info(f"Finished creating output container for task {self.task_uri}")
