@@ -329,9 +329,8 @@ class NamedEntityLinkingTask(Task, ABC):
                     mu:uuid $new_statement_uuid ;
                     rdf:subject $entity_uri ;
                     rdf:predicate skos:exactMatch ;
-                    rdf:object $entity_uri .
+                    rdf:object $found_uri .
 
-                $entity_uri skos:exactMatch $found_uri .
                 {extra_triples_insert}
 
                 $activity a prov:Activity ;
