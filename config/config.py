@@ -130,7 +130,7 @@ class Settings(BaseModel):
     publication_graph: str = Field(default_factory=lambda: get_config_value("PUBLICATION_GRAPH", "publication_graph", "http://mu.semte.ch/graphs/public/pdf"))    
 
     # Provenance configuration for NEL annotations
-    nel_agent_uri: str = Field(default_factory=lambda: get_config_value("NEL_AGENT_URI", "nel_agent_uri", "http://example.com/agents/nel-service"))
+    nel_agent_uri: str = Field(default_factory=lambda: get_config_value("NEL_AGENT_URI", "nel_agent_uri", "http://data.lblod.info/id/ai-components/linking"))
 
 class TaskOperations(str, Enum):
     NAMED_ENTITY_LINKING = "http://lblod.data.gift/id/jobs/concept/TaskOperation/named-entity-linking"
