@@ -5,6 +5,7 @@ from rdflib.namespace import RDF, RDFS, SKOS
 from shapely.geometry import shape, Point
 
 # Define Namespaces
+MU = Namespace("http://mu.semte.ch/vocabularies/core/")
 DCTERMS = Namespace("http://purl.org/dc/terms/")
 LOCN = Namespace("http://www.w3.org/ns/locn#")
 GEOSPARQL = Namespace("http://www.opengis.net/ont/geosparql#")
@@ -20,6 +21,7 @@ class NominatimParser:
         
     def reset_graph(self):
         self.g = Graph()
+        self.g.bind("mu", MU)
         self.g.bind("dcterms", DCTERMS)
         self.g.bind("locn", LOCN)
         self.g.bind("geosparql", GEOSPARQL)
@@ -118,8 +120,10 @@ class NominatimParser:
 
         # Geometry
         if info.get("wkt"):
-            geom_node = LBLOD_GEOM[str(uuid.uuid4())]
+            geom_uuid = str(uuid.uuid4())
+            geom_node = LBLOD_GEOM[geom_uuid]
             self.g.add((geom_node, RDF.type, LOCN.Geometry))
+            self.g.add((geom_node, MU.uuid, Literal(geom_uuid)))
             wkt_lit = Literal(f"<http://www.opengis.net/def/crs/EPSG/0/4326> {info['wkt']}", 
                               datatype=GEOSPARQL.wktLiteral)
             if info.get("post_code"):
