@@ -408,9 +408,6 @@ class NamedEntityLinkingTask(Task, ABC):
          - sends query to LLM to retrieve the URI of the entity based on its class, label and (optionally) location
          - creates a new NEL annotation referencing the original, adds skos:exactMatch and provenance
         """
-        if not hasattr(self, "retries"):
-            self.retries = 0
-
         inputs = self.fetch_data_from_input_container()
 
         if inputs is None:
@@ -418,6 +415,7 @@ class NamedEntityLinkingTask(Task, ABC):
             return
 
         for input in inputs:
+            self.retries = 0
             success = False
             while not success and self.retries < settings.llm_max_retries:
                 self.retries += 1
