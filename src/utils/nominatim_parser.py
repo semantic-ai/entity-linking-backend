@@ -1,8 +1,12 @@
 import json
+import logging
 import uuid
 from rdflib import Graph, Namespace, URIRef, Literal
 from rdflib.namespace import RDF, RDFS, SKOS
+from shapely.errors import ShapelyError
 from shapely.geometry import shape, Point
+
+logger = logging.getLogger(__name__)
 
 # Define Namespaces
 MU = Namespace("http://mu.semte.ch/vocabularies/core/")
@@ -39,11 +43,13 @@ class NominatimParser:
         if data.get("geometry"):
             try:
                 return shape(data.get("geometry")).wkt
-            except: pass
+            except (ShapelyError, AttributeError, TypeError, ValueError) as e:
+                logger.warning(f"Failed to parse GeoJSON geometry {data.get('geometry')!r}: {e}")
         if "lon" in data and "lat" in data:
             try:
                 return Point(float(data["lon"]), float(data["lat"])).wkt
-            except: pass
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Failed to build Point from lon/lat {data.get('lon')!r}/{data.get('lat')!r}: {e}")
         return None
 
     def detect_and_extract(self, data):

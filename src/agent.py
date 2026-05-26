@@ -80,7 +80,12 @@ def json_schema_to_pydantic(schema: Dict[str, Any], model_name: str) -> Type[Bas
     return create_model(model_name, **fields)
 
 def create_mcp_tool(tool_info, client, verbose: bool = False):
-    """Creates a LangChain Tool from an MCP tool definition."""
+    """Creates a sync LangChain Tool from an MCP tool definition.
+
+    FastMCP's Client is async-only, so the call is dispatched through
+    asyncio.run on a local async helper. The wrapper itself is sync;
+    callers must invoke it from a sync context (no running event loop).
+    """
     schema = getattr(tool_info, "inputSchema", {})
     # Only create model if there are properties, else None (or empty model)
     if schema and "properties" in schema:
@@ -88,30 +93,28 @@ def create_mcp_tool(tool_info, client, verbose: bool = False):
     else:
         pydantic_model = None
 
-    async def _acall(**kwargs):
+    def _call(**kwargs):
         if verbose:
             logger.info(f"Invoking tool {tool_info.name} with args: {kwargs}")
-        async with client:
-            result = await client.call_tool(tool_info.name, kwargs)
-            # Extract text content if possible
-            if hasattr(result, "content") and isinstance(result.content, list):
-                text_content = []
-                for item in result.content:
-                    if hasattr(item, "text"):
-                        text_content.append(item.text)
-                    elif isinstance(item, dict) and "text" in item:
-                        text_content.append(item["text"])
-                if text_content:
-                    return "\n".join(text_content)
-            return str(result)
 
-    def _call(**kwargs):
-        # Sync wrapper not recommended for async usage but needed for LC sync methods
-        return asyncio.run(_acall(**kwargs))
+        async def _run_async():
+            async with client:
+                result = await client.call_tool(tool_info.name, kwargs)
+                if hasattr(result, "content") and isinstance(result.content, list):
+                    text_content = []
+                    for item in result.content:
+                        if hasattr(item, "text"):
+                            text_content.append(item.text)
+                        elif isinstance(item, dict) and "text" in item:
+                            text_content.append(item["text"])
+                    if text_content:
+                        return "\n".join(text_content)
+                return str(result)
+
+        return asyncio.run(_run_async())
 
     return StructuredTool.from_function(
         func=_call,
-        coroutine=_acall,
         name=tool_info.name,
         description=tool_info.description or f"Tool {tool_info.name}",
         args_schema=pydantic_model
@@ -173,20 +176,24 @@ class Agent:
                 temperature=self.config.temperature
             )
 
-    async def get_tools(self):
+    def get_tools(self):
         """Returns the list of tools available to the agent."""
         if not hasattr(self, 'lc_tools'):
-            await self.initialize()
+            self.initialize()
         return self.lc_tools
 
-    async def initialize(self):
+    def initialize(self):
         """Connects to MCP, loads tools, and builds the agent."""
         try:
             logger.info(f"Connecting to MCP at {self.config.mcp_server_url}")
-            async with self.mcp_client:
-                tools_info = await self.mcp_client.list_tools()
-                logger.info(f"Found {len(tools_info)} tools")
-            
+
+            async def _list_tools_async():
+                async with self.mcp_client:
+                    return await self.mcp_client.list_tools()
+
+            tools_info = asyncio.run(_list_tools_async())
+            logger.info(f"Found {len(tools_info)} tools")
+
             # Filter tools if enabled_tools is set
             if self.config.enabled_tools is not None:
                 tools_info = [t for t in tools_info if t.name in self.config.enabled_tools]
@@ -195,21 +202,20 @@ class Agent:
             # Convert to LangChain tools
             self.lc_tools = [create_mcp_tool(t, self.mcp_client, verbose=self.config.verbose) for t in tools_info]
             self.cached_tools = {t.name: t for t in self.lc_tools}
-            
 
             # We use tool calling agent
             self.agent = create_agent(self.llm, tools=self.lc_tools, response_format=SparqlResponse)
 
             logger.info("Agent initialized successfully")
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize agent: {e}")
             raise e
 
-    async def _run_request(self, query: str, specific_tools: Optional[List[str]] = None) -> SparqlResponse:
+    def _run_request(self, query: str, specific_tools: Optional[List[str]] = None) -> SparqlResponse:
         """Internal method to run a query with optionally specific tools JIT."""
         if not hasattr(self, 'cached_tools'):
-            await self.initialize()
+            self.initialize()
 
         # Determine which tools to use for this request
         if specific_tools is not None:
@@ -224,41 +230,30 @@ class Agent:
         temp_agent = create_agent(self.llm, tools=tools_to_use, response_format=SparqlResponse)
 
         try:
-            # Use ainvoke (async) with asyncio.wait_for to enforce a strict timeout
-            result = await asyncio.wait_for(
-                temp_agent.ainvoke(
-                    {"messages": [{"role": "user", "content": query}]}
-                ),
-                timeout=120.0 # Timeout in seconds
-            )
+            result = temp_agent.invoke({"messages": [{"role": "user", "content": query}]})
 
             if isinstance(result, dict) and "structured_response" in result:
                 return result["structured_response"]
             elif isinstance(result, SparqlResponse):
                 return result
             else:
-                 # Fallback/Debug
-                 logger.warning(f"Unexpected result format: {type(result)}")
-                 messages = result.get("messages", []) if isinstance(result, dict) else []
-                 
-                 #self.log_agent_messages(messages, level="error")
-                 
-                 # Try to force parse if it's correct type but not in dict
-                 if hasattr(result, "structured_response"):
-                      return result.structured_response
-                      
-                 error_msg = "Could not find structured_response in agent output."
-                 if messages:
-                     last_msg = messages[-1]
-                     content = getattr(last_msg, "content", "")
-                     if content:
-                         error_msg += f"\n\n======================Last agent response ========================\n\n {content}"
-                         
-                 raise ValueError(error_msg)
+                # Fallback/Debug
+                logger.warning(f"Unexpected result format: {type(result)}")
+                messages = result.get("messages", []) if isinstance(result, dict) else []
 
-        except asyncio.TimeoutError:
-            raise HTTPException(status_code=408, detail="Operation timed out after 120 seconds")
-        
+                # Try to force parse if it's correct type but not in dict
+                if hasattr(result, "structured_response"):
+                    return result.structured_response
+
+                error_msg = "Could not find structured_response in agent output."
+                if messages:
+                    last_msg = messages[-1]
+                    content = getattr(last_msg, "content", "")
+                    if content:
+                        error_msg += f"\n\n======================Last agent response ========================\n\n {content}"
+
+                raise ValueError(error_msg)
+
         except Exception as e:
             logger.error(f"Error in sparql request: {e}")
             if hasattr(e, "response") and hasattr(e.response, "status_code") and e.response.status_code == 429:
@@ -270,33 +265,38 @@ class Agent:
             else:
                 raise HTTPException(status_code=500, detail=str(e))
 
-    async def run_request(self, query: str) -> SparqlResponse:
+    def run_request(self, query: str) -> SparqlResponse:
         """Method to run a general query via the agent and return structured data (uses all enabled tools)."""
-        return await self._run_request(query, specific_tools=None)
+        return self._run_request(query, specific_tools=None)
 
-    async def run_sparql_request_structured(self, entity_class: str, entity_label: str, location: str = "N/A") -> SparqlResponse:
+    def run_sparql_request_structured(self, entity_class: str, entity_label: str, location: str = "N/A") -> SparqlResponse:
         """Specific method to run the SPARQL finding task and return structured data based on structured inputs."""
-      
+
         # Default fallback template
         query_template = """Write a SPARQL query to find the URI of the {classification_class} {entity_label} in region {location}, execute it and return the results.
         Keep iterating until you find the best possible match. Provide reasoning for your selection."""
-        
+
         # Determine specific tools and query based on entity class mapping
         specific_tools = None
         if self.config.entity_class_configs:
-            class_key = entity_class.lower()
-            mapping = {k.lower(): v for k, v in self.config.entity_class_configs.items()}
-            logger.info(f"Looking for specific tool configuration for class '{class_key}' in mapping: {mapping.keys()}")
+            class_key = entity_class.strip().lower()
+            mapping = {k.strip().lower(): v for k, v in self.config.entity_class_configs.items()}
             if class_key in mapping:
                 conf = mapping[class_key]
                 logger.info(f"Found specific configuration for class '{class_key}': {conf}")
                 specific_tools = conf.get("tools")
                 query_template = conf.get("query_template", query_template)
-                
+            else:
+                logger.warning(
+                    f"No entity_class_configs entry for '{entity_class}' "
+                    f"(normalized: '{class_key}'). Known keys: {sorted(mapping.keys())}. "
+                    f"Falling back to default template."
+                )
+
         formatted_query = query_template.format(
-            classification_class=entity_class, 
-            entity_label=entity_label, 
+            classification_class=entity_class,
+            entity_label=entity_label,
             location=location
         )
-        
-        return await self._run_request(formatted_query, specific_tools=specific_tools)
+
+        return self._run_request(formatted_query, specific_tools=specific_tools)

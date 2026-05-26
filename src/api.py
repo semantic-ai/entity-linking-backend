@@ -1,14 +1,16 @@
 import asyncio
 import contextlib
+import threading
 from typing import AsyncIterator
 from pydantic import BaseModel
 from src.job import process_open_tasks, startup_tasks
 
-from fastapi import FastAPI, APIRouter, BackgroundTasks
-from pydantic import BaseModel
+from fastapi import FastAPI, APIRouter, BackgroundTasks, HTTPException
 
 from src.mcp_server import mcp
 from src.agent import Agent, SparqlResponse
+from src.task import NamedEntityLinkingTask
+from decide_ai_service_base.schema import NotificationResponse
 
 # Setup logging
 from helpers import logger
@@ -21,12 +23,13 @@ agent_instance: Agent = None
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """FastAPI lifespan that initializes the MCP session manager and Agent."""
     global agent_instance
-    
+
     agent_instance = initialize_agent()
+    NamedEntityLinkingTask.agent_instance = agent_instance
 
     logger.info("Running startup tasks...")
-    asyncio.create_task(startup_tasks())  # Start processing tasks in the background
-    
+    threading.Thread(target=startup_tasks, name="startup-tasks", daemon=True).start()
+
     yield
 
 # Request Models
@@ -44,19 +47,19 @@ router = APIRouter()
 # Endpoints
 
 @router.post("/agent/query")
-async def run_request(request: QueryRequest):
+def run_request(request: QueryRequest):
     """Perform a free-form entity linking query via the agent."""
     if not agent_instance:
          raise HTTPException(status_code=500, detail="Agent not initialized")
-    return await agent_instance.run_query(request.query)
+    return agent_instance.run_request(request.query)
 
 @router.post("/agent/query_structured", response_model=SparqlResponse)
-async def run_sparql_request_structured(request: SparqlRequest):
-    logger.info(f"Received structured query request: {request}")
+def run_sparql_request_structured(request: SparqlRequest):
     """Perform a structured entity linking via the agent."""
+    logger.info(f"Received structured query request: {request}")
     if not agent_instance:
         raise HTTPException(status_code=500, detail="Agent not initialized")
-    return await agent_instance.run_sparql_request_structured(
+    return agent_instance.run_sparql_request_structured(
         entity_class=request.entity_class,
         entity_label=request.entity_label,
         location=request.location
@@ -90,10 +93,6 @@ def mount_mcp(app: FastAPI):
             logger.warning("Could not find suitable mounting method for MCP object. /mcp endpoint might not be available.")
     except Exception as e:
         logger.error(f"Failed to mount MCP app: {e}")
-
-class NotificationResponse(BaseModel):
-    status: str
-    message: str
 
 @router.post("/delta", status_code=202)
 def delta(background_tasks: BackgroundTasks) -> NotificationResponse:

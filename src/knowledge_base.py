@@ -10,7 +10,7 @@ from sparql_llm.utils import get_prefixes_and_schema_for_endpoints
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
 from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-from config.config import settings, qdrant_client, endpoints
+from src.config import settings, qdrant_client, endpoints
 from src.embeddings import EmbeddingModel
 
 from helpers import logger
