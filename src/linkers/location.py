@@ -22,6 +22,7 @@ class LocationLinker(EntityLinker):
         self,
         entity_label: str,
         location: str,
+        location_uri: str,
         subject_uri: Optional[str] = None,
     ) -> Optional[LinkerResult]:
         if not entity_label:

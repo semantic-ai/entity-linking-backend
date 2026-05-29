@@ -21,13 +21,14 @@ class OrganizationLinker(EntityLinker):
         self,
         entity_label: str,
         location: str,
+        location_uri: str,
         subject_uri: Optional[str] = None,
     ) -> Optional[LinkerResult]:
 
         url = f"{settings.search_endpoint}/organizations/search/"
         params = {
             "filter[name.*]": entity_label,
-            "filter[:term:owning-body]": location,
+            "filter[:term:owning-body]": location_uri,
         }
         
         try:
@@ -46,7 +47,7 @@ class OrganizationLinker(EntityLinker):
             if not results:
                 logger.info(
                     "OrganizationLinker found no matching organizations",
-                    extra={"entity_label": entity_label, "location": location},
+                    extra={"entity_label": entity_label, "location": location_uri},
                 )
                 return None
 
@@ -67,7 +68,7 @@ class OrganizationLinker(EntityLinker):
         except requests.RequestException as e:
             logger.error(
                 f"OrganizationLinker HTTP request failed: {e} "
-                f"entity_label={entity_label!r}, location={location!r}"
+                f"entity_label={entity_label!r}, location={location_uri!r}"
             )
             return None
         except ValueError as e:
