@@ -36,6 +36,9 @@ class Settings(BaseModel):
     embedding_provider: str = os.getenv("EMBEDDING_PROVIDER", "ollama")
     embedding_dimensions: int = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
 
+    # Search
+    search_endpoint: str = os.getenv("SEARCH_ENDPOINT", "http://search")
+
     ollama_host: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     ollama_model: str = os.getenv("OLLAMA_MODEL", "mistral-nemo")
 
