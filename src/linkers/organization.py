@@ -62,7 +62,7 @@ class OrganizationLinker(EntityLinker):
             extra_triples = None
             score = first_org.get("score", None)
             if score:
-                extra_triples = f"{sparql_escape_uri(subject_uri)} <http://mu.semte.ch/vocabularies/ext/muSearchScore> {sparql_escape_float(score)} ."
+                extra_triples = f"$annotation_id <http://mu.semte.ch/vocabularies/ext/muSearchScore> {sparql_escape_float(score)} ."
 
             return LinkerResult(uri=uri, extra_triples=extra_triples)
         except requests.RequestException as e:
