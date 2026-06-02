@@ -15,6 +15,7 @@ class EntityLinker(ABC):
         self,
         entity_label: str,
         location: str,
+        location_uri: str,
         subject_uri: Optional[str] = None,
     ) -> Optional[LinkerResult]:
         """Resolve a label (+ optional location filter) to a URI.

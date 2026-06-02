@@ -133,6 +133,10 @@ class NamedEntityLinkingAnnotation(RelationExtractionAnnotation):
             """
         )
 
+        extra = Template(self.get_extra_inserts()).substitute(
+            annotation_id=sparql_escape_uri(annotation_uri)
+        )
+
         query_string = query_template.substitute(
             ai_graph=sparql_escape_uri(ai_graph),
             prev_annotation_uri=sparql_escape_uri(self.prev_annotation_uri),
@@ -146,7 +150,7 @@ class NamedEntityLinkingAnnotation(RelationExtractionAnnotation):
             statement_parts=statement_parts,
             statement_filter=statement_filter,
             timing_triples=timing_triples,
-            extra=self.get_extra_inserts(),
+            extra=extra,
         )
 
         try:

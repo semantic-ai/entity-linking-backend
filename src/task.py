@@ -236,7 +236,7 @@ class NamedEntityLinkingTask(DecisionTask):
         """
         if input["location"] == "Unknown location":
             governing_unit_uri = self.fetch_governing_unit_uri()
-            return self.fetch_governing_unit_name(governing_unit_uri)
+            return [self.fetch_governing_unit_name(governing_unit_uri), governing_unit_uri]
         return input["location"]
 
     def process(self):
@@ -272,7 +272,7 @@ class NamedEntityLinkingTask(DecisionTask):
                         success = True
                         break
 
-                    location = self._resolve_location(input)
+                    [location, location_uri] = self._resolve_location(input)
 
                     logger.info(
                         f"Linking {input['entityLabel']!r} ({entity_class}) "
@@ -283,6 +283,7 @@ class NamedEntityLinkingTask(DecisionTask):
                     result = linker.link(
                         entity_label=input["entityLabel"],
                         location=location,
+                        location_uri=location_uri,
                         subject_uri=input.get("entity"),
                     )
                     end_time = datetime.now(timezone.utc)
