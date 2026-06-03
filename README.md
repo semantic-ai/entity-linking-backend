@@ -197,6 +197,45 @@ Start the stack with:
 docker compose up 
 ```
 
+### Nominatim setup for multiple locations
+
+In order to setup nominatim so it supports multiple regions a custom entry script is needed.
+
+Example config for this can be found below:
+
+```yaml
+nominatim:
+  image: mediagis/nominatim:4.2
+  environment:
+    - PBF_PATH=/data/merged.osm.pbf
+  shm_size: '1gb'
+  volumes:
+    - nominatim_pbf:/data
+    - nominatim_data:/var/lib/postgresql/14/main
+    - ./init-nominatim.sh:/app/init-nominatim.sh
+  entrypoint: /bin/bash /app/init-nominatim.sh
+  ports:
+    - "8080:8080"
+```
+
+How this works:
+
+1. `PBF_PATH=/data/merged.osm.pbf` tells Nominatim to import from a single merged file.
+2. `init-nominatim.sh` runs as the container entrypoint and prepares that merged file.
+3. The `/data` volume (`nominatim_pbf`) persists the merged file, so repeated starts do not re-download/re-merge.
+4. The PostgreSQL volume (`nominatim_data`) persists Nominatim's database.
+
+What `init-nominatim.sh` does:
+
+1. Checks if `/data/merged.osm.pbf` exists.
+2. If missing, installs required tools (`wget`, `osmium-tool`, `ca-certificates`).
+3. Downloads multiple regional extracts (currently Belgium, Oberfranken, Freiburg) from Geofabrik.
+4. Merges them with `osmium merge` into `/data/merged.osm.pbf`.
+5. Removes temporary per-region files to save disk space.
+6. Executes the original Nominatim startup command (`/app/start.sh`) so normal import/startup continues.
+
+To use other regions, edit `init-nominatim.sh` and replace/add `wget` input files plus the `osmium merge` input list.
+
 ## API Endpoints
 
 This service exposes a small HTTP API (FastAPI). Two commonly used endpoints are shown below.
