@@ -1,11 +1,10 @@
-import logging
 import time
 import asyncio
 from typing import List, Dict, Any, Optional
+from helpers import logger
 
 import httpx
 
-logger = logging.getLogger(__name__)
 
 
 class NominatimGeocoder:
