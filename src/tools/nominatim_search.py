@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from helpers import logger
 
 import httpx
+from async_lru import alru_cache
 
 
 
@@ -15,6 +16,10 @@ class NominatimGeocoder:
         self.rate_limit = max(0.0, rate_limit)
         self.timeout = timeout
         self._last = 0.0
+        
+        # Create instance-specific cached version of search to avoid memory leaks
+        # and share cache across all instances if declared as a method decorator.
+        self.search = alru_cache(maxsize=1024)(self._search_impl)
 
     async def _throttle(self) -> None:
         """Simple rate limiter based on minimum seconds between calls."""
@@ -24,7 +29,7 @@ class NominatimGeocoder:
             await asyncio.sleep(wait)
         self._last = time.monotonic()
 
-    async def search(self, query: str, city: Optional[str] = None, country: Optional[str] = "BE,DE", limit: int = 1) -> Optional[Dict[str, Any]]:
+    async def _search_impl(self, query: str, city: Optional[str] = None, country: Optional[str] = "BE,DE", limit: int = 1) -> Optional[Dict[str, Any]]:
         """
         Query /search on the Nominatim server.
         Returned dict contains: query, display_name, lat, lon, importance, place_id,
@@ -32,15 +37,15 @@ class NominatimGeocoder:
         """
         if not query or not query.strip():
             return None
-
+        
         await self._throttle()
-
+        
         # Build query string
         parts = [query.strip()]
         if city and city.strip():
             parts.append(city.strip())
         full_query = ", ".join(parts)
-
+        
         params = {
             "q": full_query,
             "format": "json",
@@ -49,10 +54,10 @@ class NominatimGeocoder:
             "extratags": 0,
             "namedetails": 0,
         }
-
+        
         if country and country.strip():
             params["countrycodes"] = country.strip()
-
+        
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(f"{self.base_url}/search", params=params, timeout=self.timeout)
