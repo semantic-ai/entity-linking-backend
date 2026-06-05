@@ -148,15 +148,27 @@ class NamedEntityLinkingTask(DecisionTask):
         with the actual data graph.
         """
         q = Template(
-            get_prefixes_for_query("task", "oa", "rdf", "rdfs", "dct") +
+            get_prefixes_for_query("task", "oa", "rdf", "rdfs", "dct", "eli") +
             f"""
             SELECT ?annotation ?entity ?entityClass ?entityLabel ?location WHERE {{
                 GRAPH $default_graph {{
-                    $task task:inputContainer ?container .
-                    ?container task:hasResource ?annotation .
+                    $task dct:isPartOf ?job .
+                    {{
+                        ?task dct:isPartOf ?job .
+                        ?task task:inputContainer ?container .
+                        ?container task:hasResource ?expression .
+                    }} UNION {{
+                        ?job <http://mu.semte.ch/vocabularies/ext/shapeForTargets> / <http://www.w3.org/ns/shacl#targetNode> ?expression.
+                    }}
+                }}
+                ?expression a eli:Expression.
+                FILTER NOT EXISTS {{
+                    ?original <http://purl.org/linguistics/gold/translation> ?expression .
                 }}
 
                 GRAPH $publication_graph {{
+                    ?annotation oa:hasTarget / oa:hasSource ?expression .
+                    ?annotation oa:motivatedBy oa:linking .
                     ?annotation oa:hasBody ?statement .
                     ?statement rdf:object ?entity .
 
