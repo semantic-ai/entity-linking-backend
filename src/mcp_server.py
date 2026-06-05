@@ -9,7 +9,7 @@ warnings.simplefilter("ignore")
 
 from fastmcp import FastMCP, settings as mcp_settings
 
-from config.config import settings, endpoints
+from src.config import settings, endpoints
 from src.knowledge_base import get_knowledge_base
 from src.utils.utils import format_docs, _format_doc
 

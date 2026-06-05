@@ -1,11 +1,10 @@
-import logging
 import time
 import asyncio
 from typing import List, Dict, Any, Optional
+from helpers import logger
 
 import httpx
 
-logger = logging.getLogger(__name__)
 
 
 class NominatimGeocoder:
@@ -25,7 +24,7 @@ class NominatimGeocoder:
             await asyncio.sleep(wait)
         self._last = time.monotonic()
 
-    async def search(self, query: str, city: Optional[str] = "Gent", country: Optional[str] = "BE,DE", limit: int = 1) -> Optional[Dict[str, Any]]:
+    async def search(self, query: str, city: Optional[str] = None, country: Optional[str] = "BE,DE", limit: int = 1) -> Optional[Dict[str, Any]]:
         """
         Query /search on the Nominatim server.
         Returned dict contains: query, display_name, lat, lon, importance, place_id,

@@ -1,0 +1,38 @@
+services:
+  nel-service:
+    build:
+      context: .
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    command: >
+      uv run python -m debugpy --wait-for-client --listen 0.0.0.0:5678 -m uvicorn web:app --host
+      0.0.0.0 --port 80 --proxy-headers --timeout-keep-alive 300 --workers 1
+      --reload --reload-dir /app
+    ports:
+      - "8086:80"
+      - "5678:5678"
+    networks:
+      - app-decide_default
+    environment:
+      TARGET_GRAPH: "http://mu.semte.ch/graphs/public"
+      DEFAULT_GRAPH: "http://mu.semte.ch/graphs/harvesting"
+      ALLOW_MU_AUTH_SUDO: "true"
+      OLLAMA_HOST: "http://ollama:11434"
+      NOMINATIM_ENDPOINT: "http://nominatim:8080/"
+      MCP_SERVER_URL: "http://localhost:80/mcp/sse"
+      ENABLED_TOOLS: "search_sparql_docs,execute_sparql_query,search_location"
+      JOB_GRAPH: "http://mu.semte.ch/graphs/harvesting"
+      AI_GRAPH: "http://mu.semte.ch/graphs/public/pdf"
+      LLM_PROVIDER: "mistral"
+      LLM_MAX_RETRIES: 3
+      MISTRAL_MODEL: "ministral-14b-2512"
+    restart: no
+    volumes:
+      - ./:/app
+      - ./config.json:/usr/src/app/config.json:ro
+
+networks:
+  app-decide_default:
+    external: true
