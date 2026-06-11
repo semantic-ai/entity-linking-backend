@@ -1,10 +1,9 @@
 import time
-import asyncio
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 from helpers import logger
-
+from functools import lru_cache
 import httpx
-from async_lru import alru_cache
+#from async_lru import alru_cache
 
 
 
@@ -19,17 +18,18 @@ class NominatimGeocoder:
         
         # Create instance-specific cached version of search to avoid memory leaks
         # and share cache across all instances if declared as a method decorator.
-        self.search = alru_cache(maxsize=1024)(self._search_impl)
+        #self.search = alru_cache(maxsize=1024)(self._search_impl)
 
-    async def _throttle(self) -> None:
+    def _throttle(self) -> None:
         """Simple rate limiter based on minimum seconds between calls."""
         now = time.monotonic()
         wait = self.rate_limit - (now - self._last)
         if wait > 0:
-            await asyncio.sleep(wait)
+            time.sleep(wait)
         self._last = time.monotonic()
 
-    async def _search_impl(self, query: str, city: Optional[str] = None, country: Optional[str] = "BE,DE", limit: int = 1) -> Optional[Dict[str, Any]]:
+    @lru_cache(maxsize=1024)
+    def search(self, query: str, city: Optional[str] = None, country: Optional[str] = "BE,DE", limit: int = 1) -> Optional[Dict[str, Any]]:
         """
         Query /search on the Nominatim server.
         Returned dict contains: query, display_name, lat, lon, importance, place_id,
@@ -38,7 +38,7 @@ class NominatimGeocoder:
         if not query or not query.strip():
             return None
         
-        await self._throttle()
+        self._throttle()
         
         # Build query string
         parts = [query.strip()]
@@ -59,8 +59,8 @@ class NominatimGeocoder:
             params["countrycodes"] = country.strip()
         
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(f"{self.base_url}/search", params=params, timeout=self.timeout)
+            with httpx.Client() as client:
+                resp = client.get(f"{self.base_url}/search", params=params, timeout=self.timeout)
                 resp.raise_for_status()
                 results = resp.json()
                 if not results:
@@ -73,11 +73,11 @@ class NominatimGeocoder:
             logger.warning("Failed parsing Nominatim JSON for %r: %s", query, exc)
             return None
 
-    async def lookup_osm(self, osm_type: str, osm_id: str) -> Optional[Dict[str, Any]]:
+    def lookup_osm(self, osm_type: str, osm_id: str) -> Optional[Dict[str, Any]]:
         """
         Query /lookup on the Nominatim server by OSM type and ID.
         """
-        await self._throttle()
+        self._throttle()
         
         # map generic openstreetmap types to Nominatim types (N, W, R)
         type_map = {'node': 'N', 'way': 'W', 'relation': 'R'}
@@ -96,8 +96,8 @@ class NominatimGeocoder:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(f"{self.base_url}/lookup", params=params, timeout=self.timeout)
+            with httpx.Client() as client:
+                resp = client.get(f"{self.base_url}/lookup", params=params, timeout=self.timeout)
                 resp.raise_for_status()
                 results = resp.json()
                 if not results:
