@@ -15,10 +15,6 @@ class NominatimGeocoder:
         self.rate_limit = max(0.0, rate_limit)
         self.timeout = timeout
         self._last = 0.0
-        
-        # Create instance-specific cached version of search to avoid memory leaks
-        # and share cache across all instances if declared as a method decorator.
-        #self.search = alru_cache(maxsize=1024)(self._search_impl)
 
     def _throttle(self) -> None:
         """Simple rate limiter based on minimum seconds between calls."""
