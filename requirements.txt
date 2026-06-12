@@ -19,4 +19,4 @@ langchain-core==1.2.7
 shapely==2.1.2
 starlette-context==0.5.1
 debugpy==1.8.20
-https://github.com/semantic-ai/decide-ai-service-base/releases/download/0.1.10/decide_ai_service_base-0.1.10-py3-none-any.whl
+https://github.com/semantic-ai/decide-ai-service-base/releases/download/0.1.11/decide_ai_service_base-0.1.11-py3-none-any.whl

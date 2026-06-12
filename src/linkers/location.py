@@ -30,7 +30,7 @@ class LocationLinker(EntityLinker):
 
         city = location if location and location != "Unknown location" else None
 
-        result = asyncio.run(self._geocoder.search(query=entity_label, city=city))
+        result = self._geocoder.search(query=entity_label, city=city)
         if not result:
             logger.info(
                 f"Nominatim returned no result for {entity_label!r} (city={city!r})"
@@ -46,7 +46,7 @@ class LocationLinker(EntityLinker):
             try:
                 parts = osm_url.rstrip("/").split("/")
                 osm_type, osm_id = parts[-2], parts[-1]
-                lookup_result = asyncio.run(self._geocoder.lookup_osm(osm_type, osm_id))
+                lookup_result = self._geocoder.lookup_osm(osm_type, osm_id)
                 if lookup_result:
                     extracted = self._parser.detect_and_extract(lookup_result)
                     extra_triples = self._parser.format_triples(
