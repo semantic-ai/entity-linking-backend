@@ -34,8 +34,6 @@ class NominatimGeocoder:
         if not query or not query.strip():
             return None
         
-        self._throttle()
-        
         # Build query string
         parts = [query.strip()]
         if city and city.strip():
@@ -73,8 +71,6 @@ class NominatimGeocoder:
         """
         Query /lookup on the Nominatim server by OSM type and ID.
         """
-        self._throttle()
-        
         # map generic openstreetmap types to Nominatim types (N, W, R)
         type_map = {'node': 'N', 'way': 'W', 'relation': 'R'}
         n_type = type_map.get(osm_type.lower(), osm_type[0].upper() if osm_type else "")
