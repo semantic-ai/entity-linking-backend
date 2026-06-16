@@ -1,0 +1,74 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix mu: <http://mu.semte.ch/vocabularies/core/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix oa: <http://www.w3.org/ns/oa#> .
+@prefix nif: <http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#> .
+
+<http://example.org/annotation_1_shape>
+    a sh:NodeShape ;
+    sh:targetClass <http://www.w3.org/ns/oa#Annotation> ;
+    sh:prefixes [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/core/"^^xsd:anyURI ;
+        sh:prefix "mu" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/ns/oa#"^^xsd:anyURI ;
+        sh:prefix "oa" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://persistence.uni-leipzig.org/nlp2rdf/ontologies/nif-core#"^^xsd:anyURI ;
+        sh:prefix "nif" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/ext/"^^xsd:anyURI ;
+        sh:prefix "ext" ;
+    ] ];
+    sh:property [
+        sh:path mu:uuid ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "motivatie" ;
+        sh:description "De motivatie van de annotatie, bv. oa:linking (relatie-extractie) of oa:classifying (codelist-mapping, NER)." ;
+        sh:path oa:motivatedBy ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "body" ;
+        sh:description "Het lichaam van de annotatie, typisch een rdf:Statement, skos:Concept, of ext:NoMatchFound." ;
+        sh:path oa:hasBody ;
+        sh:minCount 1 ;
+        sh:nodeKind sh:IRIOrBlankNode ;
+    ] ;
+    sh:property [
+        sh:name "target" ;
+        sh:description "Het doel van de annotatie, typisch een oa:SpecificResource (met tekstpositie) of een eli:Expression." ;
+        sh:path oa:hasTarget ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRIOrBlankNode ;
+    ] ;
+    sh:property [
+        sh:name "confidence" ;
+        sh:description "De betrouwbaarheidsscore van de annotatie, een waarde tussen 0 en 1." ;
+        sh:path nif:confidence ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:or (
+            [ sh:datatype xsd:float ]
+            [ sh:datatype xsd:integer ]
+        ) ;
+    ] ;
+    sh:property [
+        sh:name "muSearchScore" ;
+        sh:description "Optionele zoekscore, toegevoegd door mu-search." ;
+        sh:path <http://mu.semte.ch/vocabularies/ext/muSearchScore> ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+    ] .

@@ -145,7 +145,7 @@ python -m src.api
 ```
 
 The server will start on `http://0.0.0.0:80`. The MCP SSE endpoint is available at `/mcp/sse`.
- 
+
 ## Docker Compose Example
 
 A minimal `docker-compose.yml` for running the service alongside Qdrant, Nominatim and Ollama:
@@ -278,6 +278,18 @@ This service exposes a small HTTP API (FastAPI). Two commonly used endpoints are
         -H "Content-Type: application/json" \
         -d '{"entity_class": "Administrative Body", "entity_label": "Vast Bureau", "location": "Gent"}'
     ```
+
+    **Research Query - `POST /agent/research`**
+
+    Use this endpoint for free-form research questions where the full message and tool-call breakdown is useful.
+
+    ```bash
+    curl -X POST http://localhost/agent/research \
+        -H "Content-Type: application/json" \
+        -d '{"query": "Which SPARQL endpoint and query pattern should I use to find administrative bodies in Gent?"}'
+    ```
+
+    The response includes `answer`, `sources`, `sparql_results`, `messages`, `tool_calls`, `tool_results`, `trace`, and `raw_response`.
 
     - **MCP SSE endpoint — `/mcp/sse`**
 

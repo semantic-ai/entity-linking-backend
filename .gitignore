@@ -12,3 +12,5 @@ config/virtuoso/virtuoso.ini
 /config/migrations
 test_task_flow.ipynb
 review.md
+development.ipynb
+streamlit_research_app.py

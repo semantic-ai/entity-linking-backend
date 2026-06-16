@@ -1,0 +1,98 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix mu: <http://mu.semte.ch/vocabularies/core/> .
+@prefix eli_dl: <http://data.europa.eu/eli/eli-draft-legislation-ontology#> .
+
+<http://example.org/activity_1_shape>
+    a sh:NodeShape ;
+    sh:targetClass <http://data.europa.eu/eli/eli-draft-legislation-ontology#Activity> ;
+    sh:prefixes [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/core/"^^xsd:anyURI ;
+        sh:prefix "mu" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://data.europa.eu/eli/eli-draft-legislation-ontology#"^^xsd:anyURI ;
+        sh:prefix "eli-dl" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://data.europa.eu/eli/ontology#"^^xsd:anyURI ;
+        sh:prefix "eli" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://data.vlaanderen.be/ns/besluit#"^^xsd:anyURI ;
+        sh:prefix "besluit" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "https://schema.oparl.org/"^^xsd:anyURI ;
+        sh:prefix "oparl" ;
+    ] ];
+    sh:property [
+        sh:path mu:uuid ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "activiteitstype" ;
+        sh:description "Het type activiteit, bv. besluit:Zitting." ;
+        sh:path eli_dl:had_activity_type ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "gebaseerd op realisatie van" ;
+        sh:description "Het werk waarop deze activiteit (bv. consultatie) is gebaseerd." ;
+        sh:path eli_dl:based_on_a_realization_of ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "uitgevoerd door" ;
+        sh:description "De agent die de activiteit heeft uitgevoerd." ;
+        sh:path eli_dl:executed ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "rol" ;
+        sh:description "De rol in de consultatie (OParl)." ;
+        sh:path <https://schema.oparl.org/role> ;
+        sh:minCount 0 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "gezaghebbend" ;
+        sh:description "Of de consultatie gezaghebbend is (OParl)." ;
+        sh:path <https://schema.oparl.org/authoritative> ;
+        sh:minCount 0 ;
+    ] ;
+    sh:property [
+        sh:name "paper" ;
+        sh:description "De paper gelinkt aan de consultatie (OParl)." ;
+        sh:path <https://schema.oparl.org/paper> ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "agendapunt" ;
+        sh:description "Het agendapunt gelinkt aan de consultatie (OParl)." ;
+        sh:path <https://schema.oparl.org/agendaItem> ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "vergadering" ;
+        sh:description "De vergadering gelinkt aan de consultatie (OParl)." ;
+        sh:path <https://schema.oparl.org/meeting> ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "organisatie" ;
+        sh:description "De organisatie gelinkt aan de consultatie (OParl)." ;
+        sh:path <https://schema.oparl.org/organization> ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] .

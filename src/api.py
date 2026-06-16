@@ -1,14 +1,14 @@
 import asyncio
 import contextlib
 import threading
-from typing import AsyncIterator
+from typing import AsyncIterator, Dict, List, Optional
 from pydantic import BaseModel
 from src.job import process_open_tasks, startup_tasks
 
 from fastapi import FastAPI, APIRouter, BackgroundTasks, HTTPException
 
 from src.mcp_server import mcp
-from src.agent import Agent, SparqlResponse
+from src.agent import Agent, SparqlResponse, ResearchResponse
 from src.task import NamedEntityLinkingTask
 from decide_ai_service_base.schema import NotificationResponse
 
@@ -40,6 +40,10 @@ class SparqlRequest(BaseModel):
     entity_class: str
     entity_label: str
     location: str = "N/A"
+
+class ResearchRequest(BaseModel):
+    query: str
+    messages: Optional[List[Dict[str, str]]] = None
     
 # Initialize the router
 router = APIRouter()
@@ -64,6 +68,14 @@ def run_sparql_request_structured(request: SparqlRequest):
         entity_label=request.entity_label,
         location=request.location
     )
+
+@router.post("/agent/research", response_model=ResearchResponse)
+def run_research_request(request: ResearchRequest):
+    """Perform a free-form research query via the agent."""
+    logger.info(f"Received research query: {request.query}")
+    if not agent_instance:
+        raise HTTPException(status_code=500, detail="Agent not initialized")
+    return agent_instance.run_research_request(request.query, messages=request.messages)
     
 @router.get("/")
 async def health():

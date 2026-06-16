@@ -1,0 +1,61 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix mu: <http://mu.semte.ch/vocabularies/core/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+<http://example.org/person_1_shape>
+    a sh:NodeShape ;
+    sh:targetClass <http://xmlns.com/foaf/0.1/Person> ;
+    sh:prefixes [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/core/"^^xsd:anyURI ;
+        sh:prefix "mu" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://xmlns.com/foaf/0.1/"^^xsd:anyURI ;
+        sh:prefix "foaf" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ;
+        sh:prefix "rdfs" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/2004/02/skos/core#"^^xsd:anyURI ;
+        sh:prefix "skos" ;
+    ] ];
+    sh:property [
+        sh:path mu:uuid ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "label" ;
+        sh:description "De volledige naam van de persoon." ;
+        sh:path rdfs:label ;
+        sh:minCount 0 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "voornaam" ;
+        sh:description "De voornaam van de persoon." ;
+        sh:path foaf:firstName ;
+        sh:minCount 0 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "familienaam" ;
+        sh:description "De familienaam van de persoon." ;
+        sh:path foaf:familyName ;
+        sh:minCount 0 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "exactMatch" ;
+        sh:description "Verwijzing naar een bekende URI van de persoon, bv. een mandataris-URI." ;
+        sh:path skos:exactMatch ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] .

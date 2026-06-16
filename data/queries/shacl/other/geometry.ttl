@@ -1,0 +1,35 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix mu: <http://mu.semte.ch/vocabularies/core/> .
+@prefix geosparql: <http://www.opengis.net/ont/geosparql#> .
+
+<http://example.org/geometry_1_shape>
+    a sh:NodeShape ;
+    sh:targetClass <http://www.w3.org/ns/locn#Geometry> ;
+    sh:prefixes [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/core/"^^xsd:anyURI ;
+        sh:prefix "mu" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/ns/locn#"^^xsd:anyURI ;
+        sh:prefix "locn" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.opengis.net/ont/geosparql#"^^xsd:anyURI ;
+        sh:prefix "geosparql" ;
+    ] ];
+    sh:property [
+        sh:path mu:uuid ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "WKT" ;
+        sh:description "De geometrie in Well-Known Text (WKT) formaat, conform de GeoSPARQL specificatie." ;
+        sh:path geosparql:asWKT ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+        sh:datatype <http://www.opengis.net/ont/geosparql#wktLiteral> ;
+    ] .

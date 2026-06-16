@@ -1,0 +1,39 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix mu: <http://mu.semte.ch/vocabularies/core/> .
+@prefix time: <http://www.w3.org/2006/time#> .
+
+<http://example.org/proper_interval_1_shape>
+    a sh:NodeShape ;
+    sh:targetClass <http://www.w3.org/2006/time#ProperInterval> ;
+    sh:prefixes [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/core/"^^xsd:anyURI ;
+        sh:prefix "mu" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/2006/time#"^^xsd:anyURI ;
+        sh:prefix "time" ;
+    ] ];
+    sh:property [
+        sh:path mu:uuid ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "begin" ;
+        sh:description "De begindatum van het tijdsinterval." ;
+        sh:path time:hasBeginning ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:date ;
+    ] ;
+    sh:property [
+        sh:name "einde" ;
+        sh:description "De einddatum van het tijdsinterval." ;
+        sh:path time:hasEnd ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:date ;
+    ] .

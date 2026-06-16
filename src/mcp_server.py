@@ -57,7 +57,7 @@ async def search_location(query: str, city: Optional[str] = "Gent", country: Opt
         str: JSON string of the geocoding result containing OpenStreetMap URI, address, latitude, and longitude.
     """
     geocoder = NominatimGeocoder(base_url=settings.nominatim_endpoint)
-    result = await geocoder.search(query=query, city=city, country=country)
+    result = await asyncio.to_thread(geocoder.search, query, city, country)
     return json.dumps(result) if result else "No results found"
 
 @mcp.tool()
@@ -106,10 +106,8 @@ async def search_sparql_docs(question: str, potential_classes: list[str], steps:
         A formatted string containing relevant SPARQL examples and classes schema to help construct the SPARQL query.
     """
     def _sync_search():
-        relevant_docs = knowledge_base.search(question, potential_classes, steps)   
         
-        logger.info(f"Formatted response for SPARQL query construction: \n{PROMPT_TOOL_SPARQL.format(docs_count=str(len(relevant_docs)), formatted_docs=format_docs(relevant_docs))}\n")
-          
+        relevant_docs = knowledge_base.search(question, potential_classes, steps)             
         return PROMPT_TOOL_SPARQL.format(docs_count=str(len(relevant_docs)), formatted_docs=format_docs(relevant_docs))
 
     return await asyncio.to_thread(_sync_search)

@@ -8,6 +8,11 @@
       "endpoint_url": "http://virtuoso:8890/sparql",
       "void_file": "data/queries/local/local_sparql_void.ttl",
       "examples_file": "data/queries/local/local_sparql_examples.ttl"
+    },
+    {
+      "endpoint_url": "https://human-validator.decide.lblod.info/api/sparql",
+      "examples_file": "data/queries/shacl/examples/local_sparql_examples.ttl",
+      "shapes_folder": "data/queries/shacl/shapes"
     }
   ],
   "entity_class_configs": {

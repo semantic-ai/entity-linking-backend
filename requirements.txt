@@ -8,6 +8,8 @@ langgraph-prebuilt==1.0.8
 qdrant-client==1.16.2
 fastembed==0.7.4
 chainlit==2.9.5
+streamlit>=1.37,<2
+requests>=2.31,<3
 openai==2.15.0
 fastmcp==2.14.2
 fastapi==0.121.1

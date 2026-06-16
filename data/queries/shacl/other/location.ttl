@@ -1,0 +1,116 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix mu: <http://mu.semte.ch/vocabularies/core/> .
+@prefix dct: <http://purl.org/dc/terms/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix locn: <http://www.w3.org/ns/locn#> .
+
+<http://example.org/location_1_shape>
+    a sh:NodeShape ;
+    sh:targetClass <http://purl.org/dc/terms/Location> ;
+    sh:prefixes [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/core/"^^xsd:anyURI ;
+        sh:prefix "mu" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://purl.org/dc/terms/"^^xsd:anyURI ;
+        sh:prefix "dct" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ;
+        sh:prefix "rdfs" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/2004/02/skos/core#"^^xsd:anyURI ;
+        sh:prefix "skos" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/ns/locn#"^^xsd:anyURI ;
+        sh:prefix "locn" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://schema.org/"^^xsd:anyURI ;
+        sh:prefix "schema" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "https://data.vlaanderen.be/ns/adres#"^^xsd:anyURI ;
+        sh:prefix "adres" ;
+    ] ];
+    sh:property [
+        sh:path mu:uuid ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "label" ;
+        sh:description "De tekstuele weergave van de locatie, bv. 'Schoolstraat' of 'Schoolstraat 1, 9000 Gent'." ;
+        sh:path rdfs:label ;
+        sh:minCount 0 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "geometry" ;
+        sh:description "Verwijzing naar de geometrie van de locatie (locn:Geometry)." ;
+        sh:path locn:geometry ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "exactMatch" ;
+        sh:description "Verwijzing naar een bekende URI van de locatie, bv. een Vlaams adres-URI of Wikidata-URI." ;
+        sh:path skos:exactMatch ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "gemeentenaam" ;
+        sh:description "De naam van de gemeente (postName)." ;
+        sh:path locn:postName ;
+        sh:minCount 0 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "postcode" ;
+        sh:description "De postcode van de locatie." ;
+        sh:path locn:postCode ;
+        sh:minCount 0 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "straatnaam" ;
+        sh:description "De straatnaam (thoroughfare) van het adres." ;
+        sh:path locn:thoroughfare ;
+        sh:minCount 0 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "huisnummer" ;
+        sh:description "Het huisnummer (locatorDesignator) van het adres." ;
+        sh:path locn:locatorDesignator ;
+        sh:minCount 0 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "adres" ;
+        sh:description "Verwijzing naar een gestructureerd locn:Address object." ;
+        sh:path locn:hasAddress ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "hasGeometry" ;
+        sh:description "Alternatieve verwijzing naar de geometrie via locn:hasGeometry." ;
+        sh:path locn:hasGeometry ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "url" ;
+        sh:description "URL van de locatie (schema:url)." ;
+        sh:path <http://schema.org/url> ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] .

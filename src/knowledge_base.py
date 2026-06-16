@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import math
 import time
 import logging
+from pathlib import Path
 from typing import List, Any
 from langchain_core.documents import Document
 from sparql_llm.loaders.sparql_examples_loader import SparqlExamplesLoader
@@ -14,6 +15,27 @@ from src.config import settings, qdrant_client, endpoints
 from src.embeddings import EmbeddingModel
 
 from helpers import logger
+
+
+def load_shapes_from_folder(shapes_folder: str, endpoint_url: str) -> List[Document]:
+    """Load SHACL shape definitions from .ttl files in a folder (non-recursive)."""
+    folder = Path(shapes_folder)
+    if not folder.is_dir():
+        logger.warning(f"Shapes folder not found: {shapes_folder}")
+        return []
+    docs = []
+    for file in sorted(folder.glob("*.ttl")):
+        content = file.read_text(encoding="utf-8")
+        docs.append(Document(
+            page_content=f"SHACL shape definition from {file.name}",
+            metadata={
+                "answer": content,
+                "doc_type": "SHACL shapes schema",
+                "endpoint_url": endpoint_url,
+            },
+        ))
+    logger.info(f"Loaded {len(docs)} SHACL shapes from {shapes_folder}")
+    return docs
 
 class KnowledgeBase(ABC):
     @abstractmethod
@@ -78,6 +100,12 @@ class QdrantKnowledgeBase(KnowledgeBase):
                     void_file=endpoint.get("void_file"),
                     examples_file=endpoint.get("examples_file"),
                 ).load()
+
+            if endpoint.get("shapes_folder"):
+                docs += load_shapes_from_folder(
+                    endpoint.get("shapes_folder"),
+                    endpoint.get("endpoint_url"),
+                )
 
             logger.info(f"Generating embeddings for {len(docs)} documents from endpoint {endpoint.get('endpoint_url')}...")
         start_time = time.time()
@@ -176,6 +204,68 @@ class QdrantKnowledgeBase(KnowledgeBase):
             )
         return relevant_docs
 
+class SimpleKnowledgeBase(KnowledgeBase):
+    """Concatenates all shapes and examples into a full context string (notebook-style)."""
+
+    def __init__(self):
+        self.context_docs: List[Any] = []
+
+    def initialize(self) -> None:
+        logger.info("Initializing Simple Knowledge Base...")
+        parts = []
+
+        for endpoint in endpoints:
+            endpoint_url = endpoint.get("endpoint_url", "")
+
+            # Load SHACL shapes from folder
+            if endpoint.get("shapes_folder"):
+                folder = Path(endpoint["shapes_folder"])
+                if folder.is_dir():
+                    for file in sorted(folder.glob("*.ttl")):
+                        parts.append(
+                            f"\n{'#' * 50}\n"
+                            f"# SHACL Shape: {file.name}\n"
+                            f"{file.read_text(encoding='utf-8')}\n"
+                        )
+
+            # Load examples file(s) raw
+            if endpoint.get("examples_file"):
+                examples_path = Path(endpoint["examples_file"])
+                if examples_path.is_file():
+                    parts.append(
+                        f"\n{'#' * 50}\n"
+                        f"# Examples: {examples_path.name}\n"
+                        f"{examples_path.read_text(encoding='utf-8')}\n"
+                    )
+                elif examples_path.is_dir():
+                    for file in sorted(examples_path.glob("*.ttl")):
+                        parts.append(
+                            f"\n{'#' * 50}\n"
+                            f"# Examples: {file.name}\n"
+                            f"{file.read_text(encoding='utf-8')}\n"
+                        )
+
+        context_string = "\n".join(parts)
+
+        class _ContextDoc:
+            def __init__(self, payload):
+                self.payload = payload
+
+        if context_string.strip():
+            self.context_docs = [_ContextDoc(payload={
+                "page_content": "Full SHACL shapes and SPARQL examples context",
+                "metadata": {
+                    "answer": context_string,
+                    "doc_type": "SHACL shapes schema",
+                },
+            })]
+
+        logger.info(f"Simple Knowledge Base loaded {len(parts)} file(s) into context.")
+
+    def search(self, question: str, potential_classes: List[str], steps: List[str]) -> List[Any]:
+        return self.context_docs
+
+
 class LocalKnowledgeBase(KnowledgeBase):
     def __init__(self):
         self.documents: List[Document] = []
@@ -199,6 +289,12 @@ class LocalKnowledgeBase(KnowledgeBase):
                     void_file=endpoint.get("void_file"),
                     examples_file=endpoint.get("examples_file"),
                 ).load()
+
+            if endpoint.get("shapes_folder"):
+                self.documents += load_shapes_from_folder(
+                    endpoint.get("shapes_folder"),
+                    endpoint.get("endpoint_url"),
+                )
         logger.info(f"Loaded {len(self.documents)} documents into memory.")
 
     def search(self, question: str, potential_classes: List[str], steps: List[str]) -> List[Any]:
@@ -279,6 +375,12 @@ class LocalEmbeddingKnowledgeBase(KnowledgeBase):
                     void_file=endpoint.get("void_file"),
                     examples_file=endpoint.get("examples_file"),
                 ).load()
+
+            if endpoint.get("shapes_folder"):
+                docs += load_shapes_from_folder(
+                    endpoint.get("shapes_folder"),
+                    endpoint.get("endpoint_url"),
+                )
         logger.info(f"Loaded {len(docs)} documents into memory.")
         if not docs:
             logger.info("No documents found to index.")
@@ -357,7 +459,10 @@ class LocalEmbeddingKnowledgeBase(KnowledgeBase):
 
 # Factory to get the KB
 def get_knowledge_base() -> KnowledgeBase:
-    if settings.vector_store_type == "memory":
+    if settings.vector_store_type == "simple":
+        return SimpleKnowledgeBase()
+    
+    elif settings.vector_store_type == "memory":
         return LocalKnowledgeBase()
     
     elif settings.vector_store_type == "memory_embedding":

@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 from langchain_mistralai import ChatMistralAI
 from langchain_ollama import ChatOllama
 from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel, Field, create_model
 
 # Clean logging
@@ -131,14 +131,25 @@ class SparqlResult(BaseModel):
 class SparqlResponse(BaseModel):
     results: List[SparqlResult] = Field(..., description="The list of matching entities found")
 
+class ResearchResponse(BaseModel):
+    answer: str = Field(..., description="The answer or research findings")
+    sources: Optional[List[str]] = Field(None, description="Sources or URIs referenced")
+    sparql_results: Optional[List[Dict[str, Any]]] = Field(None, description="Raw SPARQL query results if any were executed")
+    messages: Optional[List[Dict[str, Any]]] = Field(None, description="Full serialized LangChain message sequence")
+    tool_calls: Optional[List[Dict[str, Any]]] = Field(None, description="Tool calls requested by the model")
+    tool_results: Optional[List[Dict[str, Any]]] = Field(None, description="Tool result messages returned to the model")
+    trace: Optional[str] = Field(None, description="Human-readable execution trace")
+    raw_response: Optional[Dict[str, Any]] = Field(None, description="Additional serializable fields returned by the agent runtime")
+
 class AgentConfig(BaseModel):
     mcp_server_url: str
-    provider: str = "openai"  # or "mistral"
+    provider: str = "mistralai"  # Options: "mistral", "ollama", "openai"
     api_key: Optional[str] = None # Not needed for Ollama
     endpoint: Optional[str] = None # Can be None for Mistral
-    model: str = "gpt-4.1" 
+    model: str = "mistral-small" 
     temperature: float = 0.0
     verbose: bool = False
+    tracing_enabled: bool = False
     enabled_tools: Optional[List[str]] = None
     entity_class_configs: Optional[Dict[str, Any]] = None
     llm_max_retries: int = 3
@@ -212,6 +223,193 @@ class Agent:
             logger.error(f"Failed to initialize agent: {e}")
             raise e
 
+    @staticmethod
+    def trace_messages(messages: list, log: bool = True) -> str:
+        """Format the full sequence of agent messages/tool calls for debugging.
+
+        Returns a human-readable trace string and optionally logs it.
+        """
+        lines: List[str] = []
+        step = 0
+
+        for msg in messages:
+            msg_type = type(msg).__name__
+
+            if isinstance(msg, HumanMessage):
+                step += 1
+                content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                lines.append(f"\n{'='*80}")
+                lines.append(f"Step {step} | HUMAN")
+                lines.append(f"{'='*80}")
+                lines.append(content)
+
+            elif isinstance(msg, AIMessage):
+                step += 1
+                lines.append(f"\n{'='*80}")
+                lines.append(f"Step {step} | AI")
+                lines.append(f"{'='*80}")
+
+                # Show text content (if any)
+                content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                if content.strip():
+                    lines.append(f"Content: {content}")
+
+                # Show tool calls
+                tool_calls = getattr(msg, "tool_calls", None) or []
+                if tool_calls:
+                    lines.append(f"Tool calls ({len(tool_calls)}):")
+                    for tc in tool_calls:
+                        name = tc.get("name", tc.get("function", {}).get("name", "?"))
+                        args = tc.get("args", {})
+                        tc_id = tc.get("id", "")
+                        lines.append(f"  -> {name}({args})  [id={tc_id}]")
+
+            elif isinstance(msg, ToolMessage):
+                step += 1
+                tool_name = getattr(msg, "name", "unknown")
+                tc_id = getattr(msg, "tool_call_id", "")
+                content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                lines.append(f"\n{'-'*80}")
+                lines.append(f"Step {step} | TOOL RESULT: {tool_name}  [id={tc_id}]")
+                lines.append(f"{'-'*80}")
+                lines.append(content)
+
+            else:
+                step += 1
+                lines.append(f"\nStep {step} | {msg_type}: {str(msg)}")
+
+        trace = "\n".join(lines)
+        if log:
+            logger.info(f"\n{'#'*80}\n# AGENT TRACE\n{'#'*80}{trace}\n{'#'*80}\n# END TRACE\n{'#'*80}")
+        return trace
+
+    @staticmethod
+    def _json_safe(value: Any) -> Any:
+        """Convert LangChain/Pydantic objects to JSON-safe structures."""
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+
+        if isinstance(value, BaseModel):
+            try:
+                return value.model_dump(mode="json")
+            except Exception:
+                return Agent._json_safe(value.model_dump())
+
+        if isinstance(value, dict):
+            return {str(k): Agent._json_safe(v) for k, v in value.items()}
+
+        if isinstance(value, (list, tuple, set)):
+            return [Agent._json_safe(v) for v in value]
+
+        if hasattr(value, "model_dump"):
+            try:
+                return Agent._json_safe(value.model_dump(mode="json"))
+            except Exception:
+                try:
+                    return Agent._json_safe(value.model_dump())
+                except Exception:
+                    pass
+
+        return str(value)
+
+    @staticmethod
+    def _has_value(value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, (str, list, tuple, set, dict)):
+            return bool(value)
+        return True
+
+    @classmethod
+    def serialize_agent_message(cls, msg: Any, index: int) -> Dict[str, Any]:
+        """Serialize a LangChain message without dropping provider/tool metadata."""
+        serialized: Dict[str, Any] = {
+            "index": index,
+            "type": type(msg).__name__,
+            "role": getattr(msg, "type", type(msg).__name__.replace("Message", "").lower()),
+        }
+
+        for attr in (
+            "id",
+            "name",
+            "content",
+            "additional_kwargs",
+            "response_metadata",
+            "usage_metadata",
+            "tool_calls",
+            "invalid_tool_calls",
+            "tool_call_id",
+            "status",
+            "artifact",
+        ):
+            if hasattr(msg, attr):
+                value = getattr(msg, attr)
+                if attr == "content" or cls._has_value(value):
+                    serialized[attr] = cls._json_safe(value)
+
+        return serialized
+
+    @classmethod
+    def extract_tool_calls(cls, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Flatten normalized and provider-native tool calls from serialized messages."""
+        tool_calls: List[Dict[str, Any]] = []
+
+        for message in messages:
+            normalized_calls = message.get("tool_calls") or []
+            for call_index, tool_call in enumerate(normalized_calls):
+                call = cls._json_safe(tool_call)
+                if not isinstance(call, dict):
+                    call = {"value": call}
+                call["message_index"] = message.get("index")
+                call["call_index"] = call_index
+                call["source"] = "normalized"
+                tool_calls.append(call)
+
+            if normalized_calls:
+                continue
+
+            additional_kwargs = message.get("additional_kwargs") or {}
+            if not isinstance(additional_kwargs, dict):
+                continue
+
+            raw_calls = additional_kwargs.get("tool_calls", [])
+            for call_index, tool_call in enumerate(raw_calls):
+                call = cls._json_safe(tool_call)
+                if not isinstance(call, dict):
+                    call = {"value": call}
+                call["message_index"] = message.get("index")
+                call["call_index"] = call_index
+                call["source"] = "provider"
+                tool_calls.append(call)
+
+        return tool_calls
+
+    @classmethod
+    def extract_tool_results(cls, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Flatten tool result messages from the serialized message stream."""
+        tool_results: List[Dict[str, Any]] = []
+
+        for message in messages:
+            if message.get("type") != "ToolMessage" and message.get("role") != "tool":
+                continue
+
+            result: Dict[str, Any] = {
+                "message_index": message.get("index"),
+                "tool": message.get("name", "unknown"),
+                "tool_call_id": message.get("tool_call_id"),
+                "status": message.get("status"),
+                "content": message.get("content", ""),
+            }
+            if "artifact" in message:
+                result["artifact"] = message["artifact"]
+
+            tool_results.append(result)
+
+        return tool_results
+
     def _run_request(self, query: str, specific_tools: Optional[List[str]] = None) -> SparqlResponse:
         """Internal method to run a query with optionally specific tools JIT."""
         if not hasattr(self, 'cached_tools'):
@@ -225,12 +423,20 @@ class Agent:
 
         if not tools_to_use:
             logger.warning("No tools available for this request.")
+      
+        logger.info(f"[RUN] Tools used: {[t.name for t in tools_to_use]}")
 
         # JIT Agent Creation (lightweight operation)
         temp_agent = create_agent(self.llm, tools=tools_to_use, response_format=SparqlResponse)
 
         try:
             result = temp_agent.invoke({"messages": [{"role": "user", "content": query}]})
+
+            # Always trace the full message sequence for debugging
+            messages = result.get("messages", []) if isinstance(result, dict) else []
+
+            if messages and self.config.tracing_enabled:
+                self.trace_messages(messages)
 
             if isinstance(result, dict) and "structured_response" in result:
                 return result["structured_response"]
@@ -239,7 +445,6 @@ class Agent:
             else:
                 # Fallback/Debug
                 logger.warning(f"Unexpected result format: {type(result)}")
-                messages = result.get("messages", []) if isinstance(result, dict) else []
 
                 # Try to force parse if it's correct type but not in dict
                 if hasattr(result, "structured_response"):
@@ -300,3 +505,125 @@ class Agent:
         )
 
         return self._run_request(formatted_query, specific_tools=specific_tools)
+
+    @staticmethod
+    def _research_messages(query: str, messages: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, str]]:
+        if not messages:
+            return [{"role": "user", "content": query}]
+
+        allowed_roles = {"system", "user", "assistant"}
+        sanitized_messages: List[Dict[str, str]] = []
+
+        for message in messages:
+            role = str(message.get("role", "")).lower()
+            content = message.get("content", "")
+            if role in allowed_roles and content is not None:
+                sanitized_messages.append({"role": role, "content": str(content)})
+
+        if not sanitized_messages or sanitized_messages[-1] != {"role": "user", "content": query}:
+            sanitized_messages.append({"role": "user", "content": query})
+
+        return sanitized_messages
+
+    def _run_research_request(
+        self,
+        query: str,
+        specific_tools: Optional[List[str]] = None,
+        messages: Optional[List[Dict[str, Any]]] = None,
+    ) -> ResearchResponse:
+        
+        """Internal method to run a free-form research query without enforcing SparqlResponse."""
+        if not hasattr(self, 'cached_tools'):
+            self.initialize()
+
+        if specific_tools is not None:
+            tools_to_use = [self.cached_tools[name] for name in specific_tools if name in self.cached_tools]
+        else:
+            tools_to_use = self.lc_tools
+
+        if not tools_to_use:
+            logger.warning("No tools available for this request.")
+
+        logger.info(f"[RESEARCH] Tools used: {[t.name for t in tools_to_use]}")
+        # JIT Agent without response_format — allows free-form output
+        temp_agent = create_agent(self.llm, tools=tools_to_use)
+
+        try:
+            result = temp_agent.invoke({"messages": self._research_messages(query, messages)})
+
+            messages = result.get("messages", []) if isinstance(result, dict) else []
+            trace = self.trace_messages(messages, self.config.tracing_enabled) if messages else None
+            serialized_messages = [
+                self.serialize_agent_message(msg, index)
+                for index, msg in enumerate(messages, start=1)
+            ]
+            tool_calls = self.extract_tool_calls(serialized_messages)
+            tool_results = self.extract_tool_results(serialized_messages)
+
+            # Extract the final AI message content
+            answer = ""
+            sources = []
+
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage):
+                    content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                    if content.strip():
+                        answer = content
+                        break
+
+            if not answer:
+                for msg in reversed(messages):
+                    if isinstance(msg, AIMessage):
+                        answer = msg.content if isinstance(msg.content, str) else str(msg.content)
+                        break
+
+            raw_response = None
+            if isinstance(result, dict):
+                raw_response = {}
+                for key, value in result.items():
+                    if key == "messages":
+                        continue
+                    raw_response[key] = self._json_safe(value)
+                if not raw_response:
+                    raw_response = None
+
+            # Keep the existing sparql_results field populated with tool output for
+            # backwards compatibility with clients that already read it.
+            sparql_results = [
+                {
+                    "tool": item.get("tool", "unknown"),
+                    "tool_call_id": item.get("tool_call_id"),
+                    "result": item.get("content", ""),
+                }
+                for item in tool_results
+            ]
+
+            return ResearchResponse(
+                answer=answer,
+                sources=sources if sources else None,
+                sparql_results=sparql_results if sparql_results else None,
+                messages=serialized_messages if serialized_messages else None,
+                tool_calls=tool_calls if tool_calls else None,
+                tool_results=tool_results if tool_results else None,
+                trace=trace,
+                raw_response=raw_response,
+            )
+
+        except Exception as e:
+            logger.error(f"Error in research request: {e}")
+            if hasattr(e, "response") and hasattr(e.response, "status_code") and e.response.status_code == 429:
+                logger.warning("Rate limited by LLM service")
+                raise HTTPException(
+                    status_code=429,
+                    detail="Upstream rate limit exceeded. Please retry later.",
+                )
+            else:
+                raise HTTPException(status_code=500, detail=str(e))
+
+    def run_research_request(
+        self,
+        query: str,
+        messages: Optional[List[Dict[str, Any]]] = None,
+    ) -> ResearchResponse:
+        """Run a free-form research query and return unstructured results."""
+        return self._run_research_request(query, specific_tools=None, messages=messages)

@@ -1,0 +1,175 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix mu: <http://mu.semte.ch/vocabularies/core/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix dct: <http://purl.org/dc/terms/> .
+
+<http://example.org/concept_scheme_1_shape>
+    a sh:NodeShape ;
+    sh:targetClass <http://www.w3.org/2004/02/skos/core#ConceptScheme> ;
+    sh:prefixes [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/core/"^^xsd:anyURI ;
+        sh:prefix "mu" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/2004/02/skos/core#"^^xsd:anyURI ;
+        sh:prefix "skos" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/2000/01/rdf-schema#"^^xsd:anyURI ;
+        sh:prefix "rdfs" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://purl.org/dc/terms/"^^xsd:anyURI ;
+        sh:prefix "dct" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/ext/"^^xsd:anyURI ;
+        sh:prefix "ext" ;
+    ] ];
+    sh:property [
+        sh:path mu:uuid ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "naam" ;
+        sh:description "De naam van de codelijst. Bekende codelijsten: 'Sustainable Development Goals' (sdg-simple), 'Impact' (positief/negatief/neutraal/onbekend), 'Restricted Mobility Zones', 'Types of restricted mobility zones'." ;
+        sh:path skos:prefLabel ;
+        sh:minCount 0 ;
+        sh:datatype rdf:langString ;
+    ] ;
+    sh:property [
+        sh:name "definitie" ;
+        sh:description "De definitie of omschrijving van de codelijst." ;
+        sh:path skos:definition ;
+        sh:minCount 0 ;
+        sh:datatype rdf:langString ;
+    ] ;
+    sh:property [
+        sh:name "label" ;
+        sh:description "Alternatief label van de codelijst." ;
+        sh:path rdfs:label ;
+        sh:minCount 0 ;
+    ] ;
+    sh:property [
+        sh:name "topConcept" ;
+        sh:description "De top-concepten van de codelijst." ;
+        sh:path skos:hasTopConcept ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "gewijzigd" ;
+        sh:description "Datum van laatste wijziging." ;
+        sh:path dct:modified ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:name "toonInHVT" ;
+        sh:description "Of de codelijst getoond moet worden in de Human Validation Tool." ;
+        sh:path <http://mu.semte.ch/vocabularies/ext/showInHVT> ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+    ] .
+
+<http://example.org/concept_1_shape>
+    a sh:NodeShape ;
+    sh:targetClass <http://www.w3.org/2004/02/skos/core#Concept> ;
+    sh:prefixes [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/core/"^^xsd:anyURI ;
+        sh:prefix "mu" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/2004/02/skos/core#"^^xsd:anyURI ;
+        sh:prefix "skos" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://purl.org/dc/terms/"^^xsd:anyURI ;
+        sh:prefix "dct" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/ns/org#"^^xsd:anyURI ;
+        sh:prefix "org" ;
+    ] ];
+    sh:property [
+        sh:path mu:uuid ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "naam" ;
+        sh:description "Het label van het concept, bv. 'Take urgent action to combat climate change and its impacts' (SDG-13), 'Positive', 'Negative'." ;
+        sh:path skos:prefLabel ;
+        sh:minCount 0 ;
+        sh:datatype rdf:langString ;
+    ] ;
+    sh:property [
+        sh:name "alternatief label" ;
+        sh:description "Het korte label, bv. 'Climate action', 'No poverty'." ;
+        sh:path skos:altLabel ;
+        sh:minCount 0 ;
+        sh:datatype rdf:langString ;
+    ] ;
+    sh:property [
+        sh:name "notatie" ;
+        sh:description "Het nummer van het concept binnen de codelijst, bv. 1-17 voor SDG's." ;
+        sh:path skos:notation ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:name "definitie" ;
+        sh:description "De gedetailleerde beschrijving of targets van het concept." ;
+        sh:path skos:definition ;
+        sh:minCount 0 ;
+        sh:datatype rdf:langString ;
+    ] ;
+    sh:property [
+        sh:name "codelijst" ;
+        sh:description "De codelijst (ConceptScheme) waartoe dit concept behoort." ;
+        sh:path skos:inScheme ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "breder concept" ;
+        sh:description "Een breder concept in de hiërarchie." ;
+        sh:path skos:broader ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "smaller concept" ;
+        sh:description "Een smaller concept in de hiërarchie." ;
+        sh:path skos:narrower ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "topConceptOf" ;
+        sh:description "De codelijst waarvan dit een topconcept is." ;
+        sh:path skos:topConceptOf ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "exactMatch" ;
+        sh:description "Verwijzing naar een equivalent concept in een andere codelijst." ;
+        sh:path skos:exactMatch ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "onderwerp" ;
+        sh:description "Het onderwerp (dct:subject) waarmee dit concept geassocieerd is." ;
+        sh:path dct:subject ;
+        sh:minCount 0 ;
+        sh:nodeKind sh:IRI ;
+    ] .

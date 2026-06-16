@@ -15,6 +15,12 @@ CONFIG_FILE = Path(os.getenv("CONFIG_FILE", "/config/config.json"))
 class Settings(BaseModel):
     """Service configuration. Each field reads its default from an env var with a literal fallback."""
 
+
+
+    # Logging and tracing
+    verbose: bool = os.getenv("VERBOSE", "false").lower() == "true"
+    tracing_enabled: bool = os.getenv("TRACING_ENABLED", "false").lower() == "true"
+
     # Agent & API
     mcp_url: str = os.getenv("MCP_SERVER_URL", "http://localhost:80/mcp/sse")
     llm_provider: str = os.getenv("LLM_PROVIDER", "openai").lower()
@@ -110,6 +116,7 @@ if not endpoints:
             endpoint_url=settings.mu_sparql_endpoint,
             void_file="data/queries/local/local_sparql_void.ttl",
             examples_file="data/queries/local/local_sparql_examples.ttl",
+            shapes_folder="data/queries/shacl",
         )
     ]
 

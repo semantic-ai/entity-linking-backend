@@ -38,7 +38,7 @@ ex:001
 }
 LIMIT 100""" ;
     schema:keywords "administrativeBody", "region", "Sint-Gillis-Waas" ;
-    schema:target <http://virtuoso:8890/sparql> .
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
 
 ex:002
     a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
@@ -59,7 +59,7 @@ ex:002
 }
 LIMIT 10""" ;
     schema:keywords "administrativeBody", "region", "Gent", "Vast Bureau" ;
-    schema:target <http://virtuoso:8890/sparql> .
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
 
 ex:003
     a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
@@ -95,7 +95,7 @@ GROUP BY ?personLabel
 ORDER BY DESC(?aantalBesluiten)
 LIMIT 20""" ;
     schema:keywords "mandataris", "participant", "persoon", "besluit", "Gent", "betrokken" ;
-    schema:target <http://virtuoso:8890/sparql> .
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
 
 ex:004
     a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
@@ -126,7 +126,7 @@ Filter op gemeente via eli:passed_by -> bestuursorgaan -> euvoc:represents -> re
   FILTER(lang(?regionLabel) = "nl")
 }""" ;
     schema:keywords "milieu", "climate", "SDG", "positief", "impact", "aantal", "besluiten", "Gent" ;
-    schema:target <http://virtuoso:8890/sparql> .
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
 
 ex:005
     a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
@@ -163,7 +163,7 @@ Groepeer per impact-type en tel het aantal besluiten."""@nl ;
 GROUP BY ?impactLabel
 ORDER BY DESC(?aantalBesluiten)""" ;
     schema:keywords "economie", "economy", "SDG", "positief", "negatief", "impact", "vergelijking", "Gent" ;
-    schema:target <http://virtuoso:8890/sparql> .
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
 
 ex:006
     a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
@@ -187,7 +187,7 @@ GROUP BY ?adminBodyLabel
 ORDER BY DESC(?aantalBesluiten)
 LIMIT 10""" ;
     schema:keywords "bestuursorgaan", "meeste", "besluiten", "publicatie", "Gent", "administrativeBody" ;
-    schema:target <http://virtuoso:8890/sparql> .
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
 
 ex:007
     a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
@@ -221,7 +221,7 @@ GROUP BY ?adminBodyLabel
 ORDER BY DESC(?aantalBesluiten)
 LIMIT 10""" ;
     schema:keywords "bestuursorgaan", "impact", "milieu", "climate", "SDG", "positief", "Gent" ;
-    schema:target <http://virtuoso:8890/sparql> .
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
 
 ex:008
     a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
@@ -251,7 +251,7 @@ De SDG codelijst (sdg-simple) bevat 17 doelen met labels zoals 'Climate action',
 GROUP BY ?sdgLabel
 ORDER BY DESC(?aantalBesluiten)""" ;
     schema:keywords "SDG", "overzicht", "alle", "categorie", "positief", "impact", "Gent", "duurzaamheid" ;
-    schema:target <http://virtuoso:8890/sparql> .
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
 
 ex:009
     a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
@@ -264,7 +264,7 @@ Toont welke codelijsten beschikbaar zijn voor annotaties, bv. 'Sustainable Devel
 }
 ORDER BY ?schemeLabel""" ;
     schema:keywords "codelijst", "conceptscheme", "lijst", "beschikbaar", "overzicht" ;
-    schema:target <http://virtuoso:8890/sparql> .
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
 
 ex:010
     a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
@@ -280,4 +280,4 @@ Toont de beschikbare categorieën waarop besluiten geclassificeerd kunnen worden
 }
 ORDER BY ?notation""" ;
     schema:keywords "concept", "SDG", "codelijst", "categorieën", "labels", "overzicht" ;
-    schema:target <http://virtuoso:8890/sparql> .
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .

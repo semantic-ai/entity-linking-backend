@@ -37,7 +37,8 @@ def initialize_agent() -> Agent:
         api_key=api_key,
         endpoint=endpoint, # Can be None for Mistral
         model=model,
-        verbose=True,
+        verbose=settings.verbose,
+        tracing_enabled=settings.tracing_enabled,
         enabled_tools=settings.enabled_tools,
         entity_class_configs=entity_class_configs
     )

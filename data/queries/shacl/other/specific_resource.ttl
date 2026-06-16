@@ -1,0 +1,43 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix mu: <http://mu.semte.ch/vocabularies/core/> .
+@prefix oa: <http://www.w3.org/ns/oa#> .
+
+<http://example.org/specific_resource_1_shape>
+    a sh:NodeShape ;
+    sh:targetClass <http://www.w3.org/ns/oa#SpecificResource> ;
+    sh:prefixes [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/core/"^^xsd:anyURI ;
+        sh:prefix "mu" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/ns/oa#"^^xsd:anyURI ;
+        sh:prefix "oa" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://data.europa.eu/eli/ontology#"^^xsd:anyURI ;
+        sh:prefix "eli" ;
+    ] ];
+    sh:property [
+        sh:path mu:uuid ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "bron" ;
+        sh:description "De bron van de specifieke resource, typisch een eli:Expression waaruit de tekst is geëxtraheerd." ;
+        sh:path oa:hasSource ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "selector" ;
+        sh:description "De selector die de positie in de brontekst aangeeft, typisch een oa:TextPositionSelector." ;
+        sh:path oa:hasSelector ;
+        sh:minCount 0 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRIOrBlankNode ;
+    ] .

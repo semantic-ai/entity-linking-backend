@@ -1,0 +1,70 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix mu: <http://mu.semte.ch/vocabularies/core/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+<http://example.org/statement_1_shape>
+    a sh:NodeShape ;
+    sh:targetClass <http://www.w3.org/1999/02/22-rdf-syntax-ns#Statement> ;
+    sh:prefixes [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/core/"^^xsd:anyURI ;
+        sh:prefix "mu" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/1999/02/22-rdf-syntax-ns#"^^xsd:anyURI ;
+        sh:prefix "rdf" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://data.europa.eu/eli/ontology#"^^xsd:anyURI ;
+        sh:prefix "eli" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://purl.org/dc/terms/"^^xsd:anyURI ;
+        sh:prefix "dct" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://data.europa.eu/eli/eli-draft-legislation-ontology#"^^xsd:anyURI ;
+        sh:prefix "eli-dl" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/2004/02/skos/core#"^^xsd:anyURI ;
+        sh:prefix "skos" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://www.w3.org/ns/prov#"^^xsd:anyURI ;
+        sh:prefix "prov" ;
+    ] ], [ sh:declare [
+        a sh:PrefixDeclaration ;
+        sh:namespace "http://mu.semte.ch/vocabularies/ext/"^^xsd:anyURI ;
+        sh:prefix "ext" ;
+    ] ];
+    sh:property [
+        sh:path mu:uuid ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+    ] ;
+    sh:property [
+        sh:name "subject" ;
+        sh:description "Het onderwerp van de reified statement, typisch een eli:Work, eli:Expression, eli-dl:Activity, of NormatieveBepaling URI." ;
+        sh:path rdf:subject ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "predicate" ;
+        sh:description "Het predicaat van de reified statement. Mogelijke waarden: eli-dl:had_participant_person, prov:atLocation, dct:date, skos:exactMatch, ext:article, eli:realizes, eli:passed_by, eli-dl:activity_date, ext:motivation, eli:date_applicability, ext:decision, eli:language, dct:spatial, ext:legal_framework, dct:extent, eli:title, ext:publication_date, eli:first_date_entry_in_force, eli:date_document, ext:participants, eli:date_no_longer_in_force, ext:previous_decisions, eli:publication_date, ext:voting, ext:administrative_body." ;
+        sh:path rdf:predicate ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+    ] ;
+    sh:property [
+        sh:name "object" ;
+        sh:description "Het object van de reified statement, kan een literal (bv. xsd:Date, xsd:string, rdf:langString) of een IRI zijn (bv. een foaf:Person, dcterms:Location, org:Organization, eli:Work)." ;
+        sh:path rdf:object ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] .
