@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import contextlib
 import threading
 from typing import AsyncIterator
@@ -28,8 +29,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     NamedEntityLinkingTask.agent_instance = agent_instance
 
     logger.info("Running startup tasks...")
-    threading.Thread(target=startup_tasks, name="startup-tasks", daemon=True).start()
-
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(startup_tasks)
+        try:
+            await asyncio.wrap_future(future)
+        except Exception as e:
+            raise e
+    
     yield
 
 # Request Models
