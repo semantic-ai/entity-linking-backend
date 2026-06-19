@@ -10,10 +10,12 @@ from escape_helpers import sparql_escape_uri, sparql_escape_string
 from helpers import query, update, logger
 from decide_ai_service_base.sparql_config import (
     AGENT_TYPES,
-    AI_COMPONENTS,
     GRAPHS,
     JOB_STATUSES,
     get_prefixes_for_query,
+)
+from decide_ai_service_base.util import (
+    get_agent_uri
 )
 from decide_ai_service_base.task import DecisionTask
 
@@ -323,7 +325,7 @@ class NamedEntityLinkingTask(DecisionTask):
                         object_uri=result.uri,
                         activity_id=activity_uri,
                         source_uri=input["entity"],
-                        agent=AI_COMPONENTS["linker"],
+                        agent=get_agent_uri(),
                         agent_type=AGENT_TYPES.get("linker", ""),
                         start_time=start_time,
                         end_time=end_time,
