@@ -75,7 +75,16 @@ def run_research_request(request: ResearchRequest):
     logger.info(f"Received research query: {request.query}")
     if not agent_instance:
         raise HTTPException(status_code=500, detail="Agent not initialized")
-    return agent_instance.run_research_request(request.query, messages=request.messages)
+    try:
+        return agent_instance.run_research_request(request.query, messages=request.messages)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unhandled error in research request: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Research request failed: {str(e)}. Check server logs for the full trace.",
+        )
     
 @router.get("/")
 async def health():

@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 from typing import Any, Dict, List, Optional, Type, Union
 
 from click import prompt
@@ -99,7 +100,10 @@ def create_mcp_tool(tool_info, client, verbose: bool = False):
 
         async def _run_async():
             async with client:
-                result = await client.call_tool(tool_info.name, kwargs)
+                result = await asyncio.wait_for(
+                    client.call_tool(tool_info.name, kwargs),
+                    timeout=120,  # 2 min timeout for MCP tool calls
+                )
                 if hasattr(result, "content") and isinstance(result.content, list):
                     text_content = []
                     for item in result.content:
@@ -111,7 +115,14 @@ def create_mcp_tool(tool_info, client, verbose: bool = False):
                         return "\n".join(text_content)
                 return str(result)
 
-        return asyncio.run(_run_async())
+        try:
+            return asyncio.run(_run_async())
+        except asyncio.TimeoutError:
+            logger.error(f"[MCP] Tool '{tool_info.name}' timed out after 120s")
+            return f"Tool '{tool_info.name}' timed out. The endpoint may be unresponsive. Try a different approach."
+        except Exception as e:
+            logger.error(f"[MCP] Tool '{tool_info.name}' error: {e}")
+            return f"Tool '{tool_info.name}' failed: {str(e)}. Try a different approach."
 
     return StructuredTool.from_function(
         func=_call,
@@ -153,6 +164,94 @@ class AgentConfig(BaseModel):
     enabled_tools: Optional[List[str]] = None
     entity_class_configs: Optional[Dict[str, Any]] = None
     llm_max_retries: int = 3
+    llm_request_timeout: int = 60  # seconds; timeout for individual LLM API calls
+    research_timeout: int = 150  # seconds; server-side cap for research requests
+    research_recursion_limit: int = 30  # max agent loop iterations
+
+
+# --- Research System Prompt ---
+
+RESEARCH_SYSTEM_PROMPT = """You are a research agent specializing in querying linked data (SPARQL) endpoints. \
+Follow this structured methodology for EVERY research question:
+
+## Step 1 — Analyse Intent
+- Carefully read the user's question.
+- Identify the core intent: what information is being requested?
+- Identify key concepts, entity types, and potential SPARQL classes or properties involved.
+
+## Step 2 — Retrieve Documentation
+- Use 'search_sparql_docs' to find relevant SPARQL examples, class schemas, and endpoint information.
+- Provide clear potential_classes and break the question into logical steps.
+- Study the retrieved documentation carefully before writing any query.
+
+## Step 3 — Construct & Execute Queries
+- Start with a query inspired by the documentation examples.
+- Execute the query with 'execute_sparql_query'.
+- **If the query returns no results, you MUST try alternative approaches** (see Fallback Strategies below).
+- Never stop after a single failed query — always iterate.
+
+## Step 4 — Evaluate Sufficiency
+- Review the query results critically.
+- Ask yourself: do these results fully answer the user's question?
+- If not, identify what is missing and go back to Step 2 or Step 3 to retrieve additional information.
+- You may iterate multiple times — this is expected and encouraged.
+
+## Step 5 — Synthesize Answer
+- Only after gathering sufficient information, compose a clear and complete answer.
+- Reference the data you found. Include relevant URIs, labels, and values.
+- If you could not find a definitive answer after multiple attempts, clearly state what was found, what approaches you tried, and what remains unknown.
+
+## Fallback Strategies (when a query returns no results)
+Apply these in order until you get results:
+1. **Remove optional constraints** — e.g. if filtering by region via `euvoc:represents` returns nothing, try matching the region name directly in the entity's label with FILTER+REGEX.
+2. **Broaden string matching** — use REGEX or CONTAINS with partial/case-insensitive matches instead of exact values.
+3. **Explore the data** — run a simpler query to see what data actually exists (e.g. list all organizations, check which properties they have).
+4. **Remove FILTER clauses one at a time** — isolate which constraint is causing zero results.
+5. **Try alternative properties** — not all entities have all properties. If `euvoc:represents` is missing, the location may be embedded in `skos:prefLabel` or `rdfs:label`.
+6. **Check with OPTIONAL** — wrap uncertain triple patterns in OPTIONAL to see partial matches.
+
+## Important Rules
+- NEVER answer without first retrieving documentation and executing at least one query.
+- Use the documentation examples as a starting point, but ADAPT them when they don't return results.
+- If a query returns no results, do NOT give up or repeat the same query — you MUST try a different approach.
+- After 2-3 failed attempts with the same pattern, switch to an exploratory query to understand the data structure.
+- Always provide your final answer even if partial — explain what you found and what didn't work.
+"""
+
+
+# --- Agent Logging Callback ---
+
+from langchain_core.callbacks import BaseCallbackHandler
+
+
+class AgentStepLogger(BaseCallbackHandler):
+    """Logs each LLM call and tool invocation so there is visibility into agent progress."""
+
+    def on_llm_start(self, serialized, prompts, **kwargs):
+        model_name = serialized.get("name", serialized.get("id", ["unknown"])[-1] if isinstance(serialized.get("id"), list) else "unknown")
+        logger.info(f"[RESEARCH][LLM] Calling model ({model_name})...")
+
+    def on_chat_model_start(self, serialized, messages, **kwargs):
+        model_name = serialized.get("name", serialized.get("id", ["unknown"])[-1] if isinstance(serialized.get("id"), list) else "unknown")
+        msg_count = sum(len(batch) for batch in messages) if messages else 0
+        logger.info(f"[RESEARCH][LLM] Calling chat model ({model_name}) with {msg_count} messages...")
+
+    def on_llm_end(self, response, **kwargs):
+        logger.info(f"[RESEARCH][LLM] Model responded.")
+
+    def on_llm_error(self, error, **kwargs):
+        logger.error(f"[RESEARCH][LLM] Model error: {error}")
+
+    def on_tool_start(self, serialized, input_str, **kwargs):
+        tool_name = serialized.get("name", "unknown")
+        logger.info(f"[RESEARCH][TOOL] Invoking tool: {tool_name}")
+
+    def on_tool_end(self, output, **kwargs):
+        output_preview = str(output)[:200] if output else "(empty)"
+        logger.info(f"[RESEARCH][TOOL] Tool returned: {output_preview}...")
+
+    def on_tool_error(self, error, **kwargs):
+        logger.error(f"[RESEARCH][TOOL] Tool error: {error}")
 
 # --- Agent Class ---
 
@@ -167,7 +266,8 @@ class Agent:
                 "model": self.config.model,
                 "api_key": self.config.api_key,
                 "temperature": self.config.temperature,
-                "max_retries": self.config.llm_max_retries
+                "max_retries": self.config.llm_max_retries,
+                "timeout": self.config.llm_request_timeout,
             }
             if self.config.endpoint:
                 kwargs["base_url"] = self.config.endpoint
@@ -177,14 +277,16 @@ class Agent:
             self.llm = ChatOllama(
                 model=self.config.model,
                 base_url=self.config.endpoint, # Maps to ollama_url
-                temperature=self.config.temperature
+                temperature=self.config.temperature,
+                timeout=self.config.llm_request_timeout,
             )
         else:   
             self.llm = ChatOpenAI(
                 model=self.config.model,
                 api_key=self.config.api_key,
                 base_url=self.config.endpoint,
-                temperature=self.config.temperature
+                temperature=self.config.temperature,
+                request_timeout=self.config.llm_request_timeout,
             )
 
     def get_tools(self):
@@ -545,11 +647,37 @@ class Agent:
             logger.warning("No tools available for this request.")
 
         logger.info(f"[RESEARCH] Tools used: {[t.name for t in tools_to_use]}")
-        # JIT Agent without response_format — allows free-form output
-        temp_agent = create_agent(self.llm, tools=tools_to_use)
+        # JIT Agent with research system prompt and recursion limit
+        temp_agent = create_agent(
+            self.llm,
+            tools=tools_to_use,
+            system_prompt=RESEARCH_SYSTEM_PROMPT,
+        )
+
+        step_logger = AgentStepLogger()
 
         try:
-            result = temp_agent.invoke({"messages": self._research_messages(query, messages)})
+            # Run with a server-side timeout to prevent indefinite hangs
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    temp_agent.invoke,
+                    {"messages": self._research_messages(query, messages)},
+                    {"recursion_limit": self.config.research_recursion_limit, "callbacks": [step_logger]},
+                )
+                try:
+                    result = future.result(timeout=self.config.research_timeout)
+                except concurrent.futures.TimeoutError:
+                    logger.error(
+                        f"[RESEARCH] Agent timed out after {self.config.research_timeout}s for query: {query}"
+                    )
+                    raise HTTPException(
+                        status_code=504,
+                        detail=(
+                            f"Research request timed out after {self.config.research_timeout} seconds. "
+                            f"The agent may be stuck in a tool-calling loop or waiting for an unresponsive endpoint. "
+                            f"Try simplifying your question or check endpoint availability."
+                        ),
+                    )
 
             messages = result.get("messages", []) if isinstance(result, dict) else []
             trace = self.trace_messages(messages, self.config.tracing_enabled) if messages else None

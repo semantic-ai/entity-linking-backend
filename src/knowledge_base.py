@@ -70,17 +70,17 @@ class QdrantKnowledgeBase(KnowledgeBase):
         
         if not collection_needs_init:
             logger.info(
-                f"Collection '{settings.docs_collection_name}' exists with {self.client.get_collection(settings.docs_collection_name).points_count} points. Skipping initialization."
+                f"[Qdrant] Collection '{settings.docs_collection_name}' exists with {self.client.get_collection(settings.docs_collection_name).points_count} points. Skipping initialization."
             )
             return
 
         if not settings.auto_init and collection_needs_init:
             logger.warning(
-                f"Collection '{settings.docs_collection_name}' does not exist or is empty. Run init manually."
+                f"[Qdrant] Collection '{settings.docs_collection_name}' does not exist or is empty. Run init manually."
             )
             return
 
-        logger.info("Initializing Qdrant knowledge base...")
+        logger.info("[Qdrant] Initializing Qdrant knowledge base...")
 
         docs: List[Document] = []
         prefix_map, _void_schema = get_prefixes_and_schema_for_endpoints(endpoints)
@@ -107,7 +107,7 @@ class QdrantKnowledgeBase(KnowledgeBase):
                     endpoint.get("endpoint_url"),
                 )
 
-            logger.info(f"Generating embeddings for {len(docs)} documents from endpoint {endpoint.get('endpoint_url')}...")
+            logger.info(f"[Qdrant] Generating embeddings for {len(docs)} documents from endpoint {endpoint.get('endpoint_url')}...")
         start_time = time.time()
         
         # Re-create collection
@@ -120,7 +120,7 @@ class QdrantKnowledgeBase(KnowledgeBase):
         )
         
         if not docs:
-            logger.info("No documents found to index.")
+            logger.info("[Qdrant] No documents found to index.")
             return
 
         texts = [d.page_content for d in docs]
@@ -145,7 +145,7 @@ class QdrantKnowledgeBase(KnowledgeBase):
                 points=points
             )
         
-        logger.info(f"Done generating and indexing {len(docs)} documents into the vectordb in {time.time() - start_time} seconds")
+        logger.info(f"[Qdrant] Done generating and indexing {len(docs)} documents into the vectordb in {time.time() - start_time} seconds")
 
     def search(self, question: str, potential_classes: List[str], steps: List[str]) -> List[Any]:
         relevant_docs = []
@@ -202,6 +202,7 @@ class QdrantKnowledgeBase(KnowledgeBase):
                     for existing_doc in relevant_docs
                 }
             )
+        logger.info(f"[Qdrant] Found {len(relevant_docs)} relevant documents for question: '{question}'")
         return relevant_docs
 
 class SimpleKnowledgeBase(KnowledgeBase):
@@ -211,7 +212,7 @@ class SimpleKnowledgeBase(KnowledgeBase):
         self.context_docs: List[Any] = []
 
     def initialize(self) -> None:
-        logger.info("Initializing Simple Knowledge Base...")
+        logger.info("[SimpleKnowledgeBase] Initializing Simple Knowledge Base...")
         parts = []
 
         for endpoint in endpoints:
@@ -260,9 +261,10 @@ class SimpleKnowledgeBase(KnowledgeBase):
                 },
             })]
 
-        logger.info(f"Simple Knowledge Base loaded {len(parts)} file(s) into context.")
+        logger.info(f"[SimpleKnowledgeBase] Loaded {len(parts)} file(s) into context.")
 
     def search(self, question: str, potential_classes: List[str], steps: List[str]) -> List[Any]:
+        logger.info(f"[SimpleKnowledgeBase] Returning {len(self.context_docs)} context document(s) for question: '{question}'")
         return self.context_docs
 
 
@@ -271,7 +273,7 @@ class LocalKnowledgeBase(KnowledgeBase):
         self.documents: List[Document] = []
 
     def initialize(self) -> None:
-        logger.info("Initializing Simple Knowledge Base (Memory)...")
+        logger.info("[LocalKnowledgeBase] Initializing Local Knowledge Base (Memory)...")
         self.documents = []
         prefix_map, _void_schema = get_prefixes_and_schema_for_endpoints(endpoints)
 
@@ -295,7 +297,7 @@ class LocalKnowledgeBase(KnowledgeBase):
                     endpoint.get("shapes_folder"),
                     endpoint.get("endpoint_url"),
                 )
-        logger.info(f"Loaded {len(self.documents)} documents into memory.")
+        logger.info(f"[LocalKnowledgeBase] Loaded {len(self.documents)} documents into memory.")
 
     def search(self, question: str, potential_classes: List[str], steps: List[str]) -> List[Any]:
         results = []
@@ -344,6 +346,7 @@ class LocalKnowledgeBase(KnowledgeBase):
                 results.append(MockScoredPoint(payload=payload))
 
         # If too many, maybe limit?
+        logger.info(f"[LocalKnowledgeBase] Found {len(results)} relevant documents for question: '{question}'")
         return results
 
 class LocalEmbeddingKnowledgeBase(KnowledgeBase):
@@ -356,12 +359,12 @@ class LocalEmbeddingKnowledgeBase(KnowledgeBase):
         self.documents = []
 
     def initialize(self) -> None:
-        logger.info("Initializing In-Memory Embedding Knowledge Base...")
+        logger.info("[LocalEmbeddingKnowledgeBase] Initializing In-Memory Embedding Knowledge Base...")
         docs: List[Document] = []
         prefix_map, _void_schema = get_prefixes_and_schema_for_endpoints(endpoints)
 
         for endpoint in endpoints:
-            logger.info(f"Loading documents from endpoint {endpoint.get('endpoint_url')}...")
+            logger.info(f"[LocalEmbeddingKnowledgeBase] Loading documents from endpoint {endpoint.get('endpoint_url')}...")
             if endpoint.get("examples_file"):
                 docs += SparqlExamplesLoader(
                     endpoint.get("endpoint_url"),
@@ -381,9 +384,9 @@ class LocalEmbeddingKnowledgeBase(KnowledgeBase):
                     endpoint.get("shapes_folder"),
                     endpoint.get("endpoint_url"),
                 )
-        logger.info(f"Loaded {len(docs)} documents into memory.")
+        logger.info(f"[LocalEmbeddingKnowledgeBase] Loaded {len(docs)} documents into memory.")
         if not docs:
-            logger.info("No documents found to index.")
+            logger.info("[LocalEmbeddingKnowledgeBase] No documents found to index.")
             return
 
         
@@ -394,7 +397,7 @@ class LocalEmbeddingKnowledgeBase(KnowledgeBase):
         
         self.documents = list(zip(docs, embeddings))
         
-        logger.info(f"Done generating embeddings for {len(docs)} documents in {time.time() - start_time} seconds")
+        logger.info(f"[LocalEmbeddingKnowledgeBase] Done generating embeddings for {len(docs)} documents in {time.time() - start_time} seconds")
 
     def search(self, question: str, potential_classes: List[str], steps: List[str]) -> List[Any]:
         results = []
@@ -454,7 +457,7 @@ class LocalEmbeddingKnowledgeBase(KnowledgeBase):
                             score=score
                         ))
                         added += 1
-                        
+        logger.info(f"[LocalEmbeddingKnowledgeBase] Found {len(results)} relevant documents for question: '{question}'")
         return results
 
 # Factory to get the KB

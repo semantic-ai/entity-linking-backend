@@ -20,54 +20,13 @@ _:sparql_examples_prefixes
         [ sh:prefix "ext" ; sh:namespace "http://mu.semte.ch/vocabularies/ext/"^^xsd:anyURI ],
         [ sh:prefix "mu" ; sh:namespace "http://mu.semte.ch/vocabularies/core/"^^xsd:anyURI ] .
 
-ex:001
-    a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
-    rdfs:comment "Get all the administrative bodies (URIs, label) of region 'Sint-Gillis-Waas'"@en ;
-    sh:prefixes _:sparql_examples_prefixes ;
-    sh:select """SELECT ?administrativeBody ?administrativeBodyLabel WHERE {
-  ?administrativeBody a org:Organization ;
-          skos:prefLabel ?administrativeBodyLabel ;
-          euvoc:represents ?administrativeUnit .
-
-  ?administrativeUnit a org:Organization ;
-           skos:prefLabel ?regionLabel .
-
-  FILTER(CONTAINS(LCASE(STR(?regionLabel)), LCASE("Sint-Gillis-Waas"))) .
-  FILTER(lang(?administrativeBodyLabel) = "nl") .
-  FILTER(lang(?regionLabel) = "nl") .
-}
-LIMIT 100""" ;
-    schema:keywords "administrativeBody", "region", "Sint-Gillis-Waas" ;
-    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
-
-ex:002
-    a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
-    rdfs:comment "Get the administrative body URI of a region 'Gent' with label 'Vast Bureau'"@en ;
-    sh:prefixes _:sparql_examples_prefixes ;
-    sh:select """SELECT ?administrativeBody ?administrativeBodyLabel WHERE {
-  ?administrativeBody a org:Organization ;
-          skos:prefLabel ?administrativeBodyLabel ;
-          euvoc:represents ?administrativeUnit .
-
-  ?administrativeUnit a org:Organization ;
-           skos:prefLabel ?regionLabel .
-
-  FILTER(CONTAINS(LCASE(STR(?regionLabel)), LCASE("Gent"))) .
-  FILTER(CONTAINS(LCASE(STR(?administrativeBodyLabel)), LCASE("Vast Bureau"))) .
-  FILTER(lang(?administrativeBodyLabel) = "nl") .
-  FILTER(lang(?regionLabel) = "nl") .
-}
-LIMIT 10""" ;
-    schema:keywords "administrativeBody", "region", "Gent", "Vast Bureau" ;
-    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
-
 ex:003
     a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
     rdfs:comment """Welke mandatarissen waren er betrokken bij de besluiten in een bepaalde gemeente (bv. Gent)?
 Zoekt via oa:Annotation met motivatie oa:linking en rdf:Statement met predicaat eli-dl:had_participant_person.
 De annotatie-target (oa:SpecificResource) verwijst naar de eli:Expression waaruit de persoon is geëxtraheerd.
-De Expression is gekoppeld aan een eli:Work via eli:is_realized_by, en het Work aan een org:Organization via eli:passed_by.
-Het bestuursorgaan is via euvoc:represents gekoppeld aan de gemeente/regio."""@nl ;
+Het eli:Work is gekoppeld aan de eli:Expression via eli:is_realized_by, en het Work aan een bestuursorgaan via eli:passed_by.
+Het bestuursorgaan is via org:hasSubOrganization gekoppeld aan de bovenliggende organisatie met de gemeentenaam."""@nl ;
     sh:prefixes _:sparql_examples_prefixes ;
     sh:select """SELECT DISTINCT ?personLabel (COUNT(DISTINCT ?expression) AS ?aantalBesluiten) WHERE {
   ?annotation a oa:Annotation ;
@@ -86,10 +45,9 @@ Het bestuursorgaan is via euvoc:represents gekoppeld aan de gemeente/regio."""@n
   ?work eli:is_realized_by ?expression ;
         eli:passed_by ?adminBody .
 
-  ?adminBody euvoc:represents ?region .
-  ?region skos:prefLabel ?regionLabel .
-  FILTER(CONTAINS(LCASE(STR(?regionLabel)), LCASE("Gent")))
-  FILTER(lang(?regionLabel) = "nl")
+  ?parentBody org:hasSubOrganization ?adminBody ;
+              skos:prefLabel ?label .
+  FILTER(CONTAINS(LCASE(STR(?label)), "gent"))
 }
 GROUP BY ?personLabel
 ORDER BY DESC(?aantalBesluiten)
@@ -103,8 +61,8 @@ ex:004
 Zoekt via oa:Annotation met motivatie oa:classifying die twee bodies heeft:
 1) Een skos:Concept uit de SDG codelijst (sdg-simple) dat matcht met het gevraagde thema
 2) De impact-URI (positief/negatief/neutraal/onbekend)
-De annotatie-target is de eli:Expression, die via eli:is_realized_by aan het eli:Work gekoppeld is.
-Filter op gemeente via eli:passed_by -> bestuursorgaan -> euvoc:represents -> regio."""@nl ;
+De annotatie-target is de eli:Expression. Het eli:Work is via eli:is_realized_by aan de Expression gekoppeld.
+Filter op gemeente via eli:passed_by -> bestuursorgaan -> org:hasSubOrganization -> bovenliggende organisatie."""@nl ;
     sh:prefixes _:sparql_examples_prefixes ;
     sh:select """SELECT (COUNT(DISTINCT ?expression) AS ?aantalBesluiten) WHERE {
   ?annotation a oa:Annotation ;
@@ -120,10 +78,10 @@ Filter op gemeente via eli:passed_by -> bestuursorgaan -> euvoc:represents -> re
 
   ?work eli:is_realized_by ?expression ;
         eli:passed_by ?adminBody .
-  ?adminBody euvoc:represents ?region .
-  ?region skos:prefLabel ?regionLabel .
-  FILTER(CONTAINS(LCASE(STR(?regionLabel)), LCASE("Gent")))
-  FILTER(lang(?regionLabel) = "nl")
+
+  ?parentBody org:hasSubOrganization ?adminBody ;
+              skos:prefLabel ?label .
+  FILTER(CONTAINS(LCASE(STR(?label)), "gent"))
 }""" ;
     schema:keywords "milieu", "climate", "SDG", "positief", "impact", "aantal", "besluiten", "Gent" ;
     schema:target <https://human-validator.decide.lblod.info/api/sparql> .
@@ -155,10 +113,10 @@ Groepeer per impact-type en tel het aantal besluiten."""@nl ;
 
   ?work eli:is_realized_by ?expression ;
         eli:passed_by ?adminBody .
-  ?adminBody euvoc:represents ?region .
-  ?region skos:prefLabel ?regionLabel .
-  FILTER(CONTAINS(LCASE(STR(?regionLabel)), LCASE("Gent")))
-  FILTER(lang(?regionLabel) = "nl")
+
+  ?parentBody org:hasSubOrganization ?adminBody ;
+              skos:prefLabel ?label .
+  FILTER(CONTAINS(LCASE(STR(?label)), "gent"))
 }
 GROUP BY ?impactLabel
 ORDER BY DESC(?aantalBesluiten)""" ;
@@ -169,19 +127,18 @@ ex:006
     a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
     rdfs:comment """Welk bestuursorgaan van een bepaalde gemeente publiceerde het meeste besluiten?
 Zoekt eli:Work entiteiten gekoppeld aan bestuursorganen via eli:passed_by.
-Het bestuursorgaan (org:Organization) is via euvoc:represents gekoppeld aan de gemeente/regio.
+Het bestuursorgaan is een sub-organisatie van de bovenliggende organisatie met de gemeentenaam (via org:hasSubOrganization).
 Telt het aantal unieke Works per bestuursorgaan."""@nl ;
     sh:prefixes _:sparql_examples_prefixes ;
     sh:select """SELECT ?adminBodyLabel (COUNT(DISTINCT ?work) AS ?aantalBesluiten) WHERE {
   ?work a eli:Work ;
         eli:passed_by ?adminBody .
 
-  ?adminBody skos:prefLabel ?adminBodyLabel ;
-             euvoc:represents ?region .
-  ?region skos:prefLabel ?regionLabel .
-  FILTER(CONTAINS(LCASE(STR(?regionLabel)), LCASE("Gent")))
-  FILTER(lang(?regionLabel) = "nl")
-  FILTER(lang(?adminBodyLabel) = "nl")
+  ?adminBody skos:prefLabel ?adminBodyLabel .
+
+  ?parentBody org:hasSubOrganization ?adminBody ;
+              skos:prefLabel ?label .
+  FILTER(CONTAINS(LCASE(STR(?label)), "gent"))
 }
 GROUP BY ?adminBodyLabel
 ORDER BY DESC(?aantalBesluiten)
@@ -194,7 +151,7 @@ ex:007
     rdfs:comment """Welk bestuursorgaan had de grootste positieve impact op een bepaald thema (bv. milieu/SDG-13)?
 Combineert de codelist-annotatie (oa:classifying) met impact-filtering en groepeert per bestuursorgaan.
 Elke annotatie heeft twee bodies: het SDG-concept en het impact-concept (positief/negatief/neutraal/onbekend).
-De annotatie-target is de eli:Expression, gekoppeld aan eli:Work via eli:is_realized_by."""@nl ;
+De annotatie-target is de eli:Expression. Het eli:Work is via eli:is_realized_by aan de Expression gekoppeld."""@nl ;
     sh:prefixes _:sparql_examples_prefixes ;
     sh:select """SELECT ?adminBodyLabel (COUNT(DISTINCT ?expression) AS ?aantalBesluiten) WHERE {
   ?annotation a oa:Annotation ;
@@ -210,12 +167,12 @@ De annotatie-target is de eli:Expression, gekoppeld aan eli:Work via eli:is_real
 
   ?work eli:is_realized_by ?expression ;
         eli:passed_by ?adminBody .
-  ?adminBody skos:prefLabel ?adminBodyLabel ;
-             euvoc:represents ?region .
-  ?region skos:prefLabel ?regionLabel .
-  FILTER(CONTAINS(LCASE(STR(?regionLabel)), LCASE("Gent")))
-  FILTER(lang(?regionLabel) = "nl")
-  FILTER(lang(?adminBodyLabel) = "nl")
+
+  ?adminBody skos:prefLabel ?adminBodyLabel .
+
+  ?parentBody org:hasSubOrganization ?adminBody ;
+              skos:prefLabel ?label .
+  FILTER(CONTAINS(LCASE(STR(?label)), "gent"))
 }
 GROUP BY ?adminBodyLabel
 ORDER BY DESC(?aantalBesluiten)
@@ -243,10 +200,10 @@ De SDG codelijst (sdg-simple) bevat 17 doelen met labels zoals 'Climate action',
 
   ?work eli:is_realized_by ?expression ;
         eli:passed_by ?adminBody .
-  ?adminBody euvoc:represents ?region .
-  ?region skos:prefLabel ?regionLabel .
-  FILTER(CONTAINS(LCASE(STR(?regionLabel)), LCASE("Gent")))
-  FILTER(lang(?regionLabel) = "nl")
+
+  ?parentBody org:hasSubOrganization ?adminBody ;
+              skos:prefLabel ?label .
+  FILTER(CONTAINS(LCASE(STR(?label)), "gent"))
 }
 GROUP BY ?sdgLabel
 ORDER BY DESC(?aantalBesluiten)""" ;
@@ -280,4 +237,57 @@ Toont de beschikbare categorieën waarop besluiten geclassificeerd kunnen worden
 }
 ORDER BY ?notation""" ;
     schema:keywords "concept", "SDG", "codelijst", "categorieën", "labels", "overzicht" ;
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
+
+ex:011
+    a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
+    rdfs:comment """Tel het aantal besluiten (eli:Work) per stad voor de drie steden Gent, Freiburg en Bamberg.
+Combineert twee methoden om besluiten aan steden te koppelen:
+1) Via ext:owningBody op de eli:Expression (gebruikt voor Bamberg en Freiburg)
+2) Via eli:passed_by op het eli:Work + org:hasSubOrganization op het bovenliggende lichaam (gebruikt voor Gent)
+Noot: owning_body is niet altijd toegewezen voor Freiburg en Gent; passed_by ontbreekt voor Bamberg."""@nl ;
+    sh:prefixes _:sparql_examples_prefixes ;
+    sh:select """SELECT ?city (COUNT(DISTINCT ?work) AS ?decisionCount)
+WHERE {
+  VALUES ?city {
+    "bamberg"
+    "gent"
+    "freiburg"
+  }
+
+  {
+    ?work eli:is_realized_by ?expression .
+    ?expression ext:owningBody ?body .
+    ?body skos:prefLabel ?label .
+  }
+  UNION
+  {
+    ?work a eli:Work ;
+          eli:passed_by ?subBody .
+    ?body org:hasSubOrganization ?subBody ;
+          skos:prefLabel ?label .
+  }
+
+  FILTER(CONTAINS(LCASE(STR(?label)), LCASE(?city)))
+}
+GROUP BY ?city
+ORDER BY ?city""" ;
+    schema:keywords "aantal", "besluiten", "steden", "Gent", "Freiburg", "Bamberg", "vergelijking", "owningBody", "passed_by" ;
+    schema:target <https://human-validator.decide.lblod.info/api/sparql> .
+
+ex:012
+    a sh:SPARQLExecutable, sh:SPARQLSelectExecutable ;
+    rdfs:comment """Tel het aantal besluiten (eli:Work) in Bamberg via ext:owningBody op de eli:Expression.
+Bamberg gebruikt ext:owningBody op de Expression (geen eli:passed_by), dus wordt via eli:is_realized_by + ext:owningBody gezocht.
+Noot: niet alle Expressions hebben de backlink eli:realises, maar de meeste Works hebben wel eli:is_realized_by."""@nl ;
+    sh:prefixes _:sparql_examples_prefixes ;
+    sh:select """SELECT (COUNT(DISTINCT ?work) AS ?decisionCount)
+WHERE {
+  ?work eli:is_realized_by ?expression .
+  ?expression ext:owningBody ?adminBody .
+  ?adminBody skos:prefLabel ?label .
+
+  FILTER(CONTAINS(LCASE(STR(?label)), "bamberg"))
+}""" ;
+    schema:keywords "aantal", "besluiten", "Bamberg", "owningBody", "expression", "work" ;
     schema:target <https://human-validator.decide.lblod.info/api/sparql> .

@@ -58,6 +58,11 @@ class Settings(BaseModel):
     temperature: float = float(os.getenv("TEMPERATURE", "0.0"))
     llm_max_retries: int = int(os.getenv("LLM_MAX_RETRIES", "3"))
 
+
+    llm_request_timeout: int = int(os.getenv("LLM_REQUEST_TIMEOUT", "300"))
+    research_timeout: int = int(os.getenv("RESEARCH_TIMEOUT", "600"))
+    research_recursion_limit: int = int(os.getenv("RESEARCH_RECURSION_LIMIT", "30"))
+
     # Legacy tools
     enable_legacy_tools: bool = os.getenv("ENABLE_LEGACY_TOOLS", "false").lower() == "true"
     nominatim_endpoint: str = os.getenv("NOMINATIM_ENDPOINT", "https://nominatim.openstreetmap.org/")

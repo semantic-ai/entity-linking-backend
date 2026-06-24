@@ -113,10 +113,14 @@ async def search_sparql_docs(question: str, potential_classes: list[str], steps:
     return await asyncio.to_thread(_sync_search)
 
 
-FIX_QUERY_PROMPT = """Please fix the query, and try again.
-We suggest you to make the query less restricted, e.g. use a broader regex for string matching instead of exact match,
-ignore case, make sure you are not overriding an existing variable with BIND, or break down your query in smaller parts
-and check them one by one."""
+FIX_QUERY_PROMPT = """The query returned no results. You MUST try a different approach. Suggestions:
+1. Remove restrictive constraints one at a time (e.g. remove region/location filters first).
+2. If filtering by a relationship like euvoc:represents returned nothing, try matching the search term in the entity's label instead (FILTER + CONTAINS/REGEX on skos:prefLabel or rdfs:label).
+3. Use broader regex or case-insensitive CONTAINS for string matching.
+4. Run an exploratory query first (e.g. list all entities of the type without filters) to understand what data exists.
+5. Use OPTIONAL for uncertain triple patterns to get partial results.
+6. Break the query into smaller parts and verify each part independently.
+Do NOT repeat the same query — you must change your approach."""
 
 @mcp.tool()
 async def execute_sparql_query(sparql_query: str, endpoint_url: str) -> str:
@@ -148,6 +152,7 @@ async def execute_sparql_query(sparql_query: str, endpoint_url: str) -> str:
         return resp_msg
     # Execute the SPARQL query
     try:
+        logger.info(f"[SPARQL] Executing SPARQL query on endpoint {endpoint_url}:\n{sparql_query}")
         client = SparqlClient(endpoint=endpoint_url)
         # SparqlClient.search returns List[Dict] (the bindings) or raises exception
         bindings = await client.search(query=sparql_query, max_results=50) 

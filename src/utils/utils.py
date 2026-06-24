@@ -40,7 +40,10 @@ def initialize_agent() -> Agent:
         verbose=settings.verbose,
         tracing_enabled=settings.tracing_enabled,
         enabled_tools=settings.enabled_tools,
-        entity_class_configs=entity_class_configs
+        entity_class_configs=entity_class_configs,
+        llm_request_timeout=settings.llm_request_timeout,
+        research_timeout=settings.research_timeout,
+        research_recursion_limit=settings.research_recursion_limit,
     )
     agent_instance = Agent(agent_conf)
     logger.info("Agent initialized successfully")
