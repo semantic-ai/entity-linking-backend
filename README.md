@@ -1,326 +1,453 @@
 # Entity Linking Backend MCP Server
 
-This repository contains the backend service for the Entity Linking Service. It exposes a Model Context Protocol (MCP) server that provides tools for querying SPARQL endpoints, searching locations, performing web searches, and utilizing a vector-based knowledge base (for example sparql queries).
+Backend service for Named Entity Linking (NEL) against Linked Data sources. Exposes a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server alongside HTTP agent endpoints that use LLM-driven tool calling to resolve entities (administrative bodies, locations, mandataries) to their canonical URIs.
+
+## Table of Contents
+
+- [Features](#features)
+- [Project Structure](#project-structure)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [API Endpoints](#api-endpoints)
+- [Research Modes](#research-modes)
+- [MCP Server](#mcp-server)
+- [Task Processing (Delta Pipeline)](#task-processing-delta-pipeline)
+- [Docker Deployment](#docker-deployment)
+- [Nominatim Setup](#nominatim-setup-for-multiple-regions)
+
+---
+
+## Features
+
+- **SPARQL Integration** — Generate and execute SPARQL queries against configured endpoints with automatic validation and prefix fixing.
+- **Knowledge Base** — Semantic search over SPARQL examples, SHACL shapes, and VoID descriptions using Qdrant, in-memory embeddings, or Ollama.
+- **Location Search** — Geocoding via Nominatim (self-hosted or public).
+- **Web Search** — DuckDuckGo integration for general knowledge lookup.
+- **Multiple LLM Providers** — OpenAI, Mistral, and Ollama (local).
+- **Research Mode** — Plan-then-execute LangGraph architecture with streaming support.
+- **Task Pipeline** — Delta-driven task processing compatible with the mu-semtech stack.
+
+---
 
 ## Project Structure
 
 ```
 entity-linking-backend/
-├── config/             # Configuration files
-├── data/               # Data files (metadata, examples, shapes)
-├── src/                # Source code
-│   ├── agent.py        # Agent implementation
-│   ├── api.py          # FastAPI entry point
-│   ├── mcp_server.py   # MCP Server definition
-│   ├── knowledge_base.py # Qdrant knowledge base integration
-│   ├── tools/          # Tool implementations (SPARQL, Nominatim, Web)
-│   └── utils/          # Utility functions
-└── requirements.txt    # Python dependencies
+├── src/
+│   ├── api.py                  # FastAPI application & HTTP endpoints
+│   ├── agent.py                # Agent class — orchestrates LLM + tools
+│   ├── mcp_server.py           # MCP Server (FastMCP) tool definitions
+│   ├── config.py               # Settings, endpoint & entity class config
+│   ├── knowledge_base.py       # Vector store (Qdrant / in-memory)
+│   ├── task.py                 # Named Entity Linking task processor
+│   ├── job.py                  # Job/task lifecycle management
+│   ├── nel_annotation.py       # Annotation reading/writing
+│   ├── agent_helpers/
+│   │   ├── models.py           # AgentConfig, SparqlResponse, ResearchResponse
+│   │   ├── research_graph.py   # LangGraph plan-execute state machine
+│   │   ├── prompts.py          # System prompts for all modes
+│   │   ├── mcp_tools.py        # MCP → LangChain tool bridge
+│   │   ├── serialization.py    # Message tracing & serialization
+│   │   └── logging_callbacks.py
+│   ├── tools/
+│   │   ├── sparql_search.py    # SPARQL client
+│   │   ├── nominatim_search.py # Nominatim geocoder
+│   │   └── web_search.py       # DuckDuckGo search
+│   ├── linkers/                # Entity-class-specific linking logic
+│   └── utils/
+├── config/                     # SPARQL migrations & Virtuoso config
+├── data/                       # VoID files, SPARQL examples, SHACL shapes
+├── docs/                       # Architecture documentation
+├── config_example.json         # Template for external config
+├── docker-compose.local.yml    # Local dev stack
+├── Dockerfile
+└── requirements.txt
 ```
 
-## Features
-
-- **SPARQL Integration**: Tools to generate and execute SPARQL queries against configured endpoints.
-- **Knowledge Base**: Uses Qdrant and FastEmbed/Ollama for semantic search over documentation and examples. (can be used without Qdrant in memory)
-- **Location Search**: Integration with Nominatim for geocoding.
-- **Multiple LLM Support**: Configurable to use OpenAI, Mistral, or Ollama.
-
-## Available Tools
-
-The following tools are available via the MCP server:
-
-- **search_location**: Search for a location (entity linking) based on a query, city, and country. Returns the nominatim reponse.
-- **search_sparql_docs**: Assist the agent in writing SPARQL queries to access resources by retrieving relevant examples and classes schema.
-- **execute_sparql_query**: Execute a SPARQL query against a SPARQL endpoint.
+---
 
 ## Prerequisites
 
 - Python 3.10+
-- Docker & Docker Compose
+- Docker & Docker Compose (for containerised deployment)
+- An LLM provider: OpenAI API key, Mistral API key, or a running Ollama instance
+
+---
+
 ## Installation
 
-1.  Clone the repository.
-2.  Install dependencies:
+```bash
+git clone <repository-url>
+cd entity-linking-backend
+pip install -r requirements.txt
+```
 
-    ```bash
-    pip install -r requirements.txt
-    ```
+---
 
 ## Configuration
 
-The application is configured via environment variables and a `config.json` file. Settings are resolved with the following priority (highest to lowest):
-1. **Environment Variables** (e.g., set in `.env` or Docker environment)
-2. **Config File** (values loaded from the external JSON configuration file `config.json`)
-3. **Default Values**
+Settings are resolved with the following priority (highest wins):
+
+1. **Environment variables** (or `.env` file)
+2. **Config file** (`config.json` mounted at `/config/config.json`)
+3. **Default values** (defined in `src/config.py`)
 
 ### Environment Variables
 
-You can set these directly or via a `.env` file:
-
 ```env
-# LLM Provider (openai, mistral, ollama)
-LLM_PROVIDER=openai
+# --- LLM Provider ---
+LLM_PROVIDER=openai                  # openai | mistral | ollama
 LLM_MAX_RETRIES=3
+LLM_REQUEST_TIMEOUT=300              # seconds
+TEMPERATURE=0.0
 
-# OpenAI Configuration
-OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-4
+# --- OpenAI ---
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4.1
+OPENAI_ENDPOINT=                     # optional, for Azure or proxies
 
-# Mistral Configuration
-MISTRAL_API_KEY=your_key_here
-MISTRAL_MODEL=mistral-medium
+# --- Mistral ---
+MISTRAL_API_KEY=...
+MISTRAL_MODEL=ministral-14b-2512
+MISTRAL_ENDPOINT=                    # optional
 
-# Services
+# --- Ollama (local) ---
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=mistral-nemo
+
+# --- Vector Store & Embeddings ---
+VECTOR_STORE_TYPE=memory_embedding   # memory_embedding | simple | qdrant
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
-NOMINATIM_ENDPOINT=http://localhost:8080/
-OLLAMA_HOST=http://localhost:11434
+EMBEDDING_MODEL=embeddinggemma
+EMBEDDING_PROVIDER=ollama            # ollama | fastembed
+EMBEDDING_DIMENSIONS=768
+FORCE_INDEX=false                    # rebuild index on startup
+AUTO_INIT=true                       # auto-initialise knowledge base
 
-# MCP Configuration
+# --- Services ---
+NOMINATIM_ENDPOINT=http://localhost:8080/
+MU_SPARQL_ENDPOINT=http://virtuoso:8890/sparql
+
+# --- MCP ---
 MCP_SERVER_URL=http://localhost:80/mcp/sse
-ENABLED_TOOLS=search_sparql_docs,execute_sparql_query,search_web,search_location
+
+# --- Tool Selection ---
+ENABLED_TOOLS=search_sparql_docs,execute_sparql_query,search_location
+
+# --- Research Mode ---
+RESEARCH_TIMEOUT=600                 # hard timeout for research requests (seconds)
+RESEARCH_RECURSION_LIMIT=30          # max ReAct iterations (flat mode)
+
+# --- Logging ---
+VERBOSE=false
+TRACING_ENABLED=false
 ```
 
-### Switching Providers & Local Execution
+### Config File (`config.json`)
 
-The application supports multiple LLM providers including OpenAI, Mistral, and Ollama (local).
-
-**Local Execution with Ollama:**
-You can run the agent locally using Ollama. This is useful for privacy or cost reasons.
-To use Ollama, set `LLM_PROVIDER=ollama` and configure the endpoints and models in the env.
-
-Testing using following local models:
-- **Mistral Nemo**: Decent performance depending on the type of query (not too complex), functional tool-calling.
-- **Ministral-3:14b (instruct)**:  Issue with tool-calling via ollama, running via Mistral API achieves best results.
-
-### External Config File (`config.json`) and Tool Selection
-
-To deploy with external configuration and data, you can mount a `config.json` file. Use `config_example.json` as a template.
-
-When using smaller local models (like 7B or 12B parameter models), it is highly recommended to **limit the number of enabled tools**. Smaller models can struggle with reasoning when presented with too many tools or irrelevant context.
-
-You can set a base constraint via the `ENABLED_TOOLS` environment variable (as shown above), and you can finely control **which tools and specific query templates** are used dynamically per `entity_class` during structured requests (`/agent/query_structured`). This mapping is done through the `config.json` file.
-
-If this configuration is provided, the backend will JIT (Just-In-Time) spawn a lightweight router-agent with exactly the sub-selection of tools mapped for that specific task:
-
-**Example `config.json` integration:**
+Use `config_example.json` as a template. The config file defines SPARQL endpoints and per-entity-class tool/template mappings.
 
 ```json
 {
+  "endpoints": [
+    {
+      "endpoint_url": "http://virtuoso:8890/sparql",
+      "void_file": "data/queries/local/local_sparql_void.ttl",
+      "examples_file": "data/queries/local/local_sparql_examples.ttl"
+    }
+  ],
   "entity_class_configs": {
     "administrative_body": {
+      "aliases": ["administrative body", "http://www.w3.org/ns/org#Organization"],
       "tools": ["search_sparql_docs", "execute_sparql_query"],
-      "query_template": "Write a SPARQL query to find the URI of the {classification_class} {entity_label} in region {location}, execute it and return the results.\nKeep iterating until you find the best possible match. Provide reasoning for your selection."
+      "query_template": "Write a SPARQL query to find the URI of the {classification_class} {entity_label} in region {location}..."
     },
     "location": {
+      "aliases": ["http://purl.org/dc/terms/Location"],
       "tools": ["search_location"],
-      "query_template": "Search for the {classification_class} {entity_label} in region {location}. Return the best matching URI.\nProvide reasoning for your selection."
+      "query_template": "Search for the {classification_class} {entity_label} in region {location}..."
     }
   }
 }
 ```
 
-### Docker Volumes for Configuration and Data
+When a structured request arrives, the backend JIT-spawns a lightweight agent scoped to only the tools mapped for that entity class. This is especially useful for smaller models that struggle with too many tools.
 
-1.  **External Config**: Create a directory (e.g., `config/entitylinking`) and place your `config.json` file inside it. Use `config_example.json` as a template.
-2.  **External Data**: Prepare your data directory. If you mount it to `/app/data`, it will replace the built-in data.
-3.  **Run with Docker**: Mount the config directory to `/config` and the data directory to `/app/data`.
+### LLM Providers
 
-In your `docker-compose.yml`, you can add:
+| Provider | When to use | Config |
+|----------|-------------|--------|
+| **OpenAI** | Best overall performance | `LLM_PROVIDER=openai` + `OPENAI_API_KEY` |
+| **Mistral** | Good balance of cost/performance | `LLM_PROVIDER=mistral` + `MISTRAL_API_KEY` |
+| **Ollama** | Local/private, no API costs | `LLM_PROVIDER=ollama` + `OLLAMA_HOST` |
 
-```yaml
-    volumes:
-      - ./config/entitylinking:/config
-      - ./data:/app/data
-```
+Tested local models:
+- **Mistral Nemo** — Decent performance for moderate queries, functional tool-calling.
+- **Ministral 14b** — Best results via Mistral API; tool-calling issues when served through Ollama.
 
-## Usage
-
-### Running Locally (HTTP API)
-
-To run the HTTP server which exposes the MCP SSE endpoint:
-
-```bash
-python -m src.api
-```
-
-The server will start on `http://0.0.0.0:80`. The MCP SSE endpoint is available at `/mcp/sse`.
-
-## Docker Compose Example
-
-A minimal `docker-compose.yml` for running the service alongside Qdrant, Nominatim and Ollama:
-
-```yaml
-version: '3.8'
-
-services:
-    decide-mcp:
-        build: .
-        volumes:
-            - ./:/app
-        ports:
-            - "80:80"
-        env_file:
-            - .env
-        environment:
-            - QDRANT_HOST=qdrant
-            - QDRANT_PORT=6333
-            - OLLAMA_HOST=http://ollama:11434
-            - NOMINATIM_ENDPOINT=http://nominatim:8080/
-            - MCP_SERVER_URL=http://localhost:80/mcp/sse
-            - ENABLED_TOOLS=search_sparql_docs,execute_sparql_query
-            - ...
-        depends_on:
-            - qdrant
-            - nominatim
-            - ollama
-
-    qdrant:
-        image: qdrant/qdrant
-        ports:
-            - "6333:6333"
-
-    nominatim:
-        image: mediagis/nominatim:4.2
-        ports:
-            - "8080:8080"
-
-    ollama:
-        image: ollama/ollama:latest
-        ports:
-            - "11434:11434"
-```
-
-Start the stack with:
-
-```bash
-docker compose up 
-```
-
-### Nominatim setup for multiple locations
-
-In order to setup nominatim so it supports multiple regions a custom entry script is needed.
-
-Example config for this can be found below:
-
-```yaml
-nominatim:
-  image: mediagis/nominatim:4.2
-  environment:
-    - PBF_PATH=/data/merged.osm.pbf
-  shm_size: '1gb'
-  volumes:
-    - nominatim_pbf:/data
-    - nominatim_data:/var/lib/postgresql/14/main
-    - ./init-nominatim.sh:/app/init-nominatim.sh
-  entrypoint: /bin/bash /app/init-nominatim.sh
-  ports:
-    - "8080:8080"
-```
-
-How this works:
-
-1. `PBF_PATH=/data/merged.osm.pbf` tells Nominatim to import from a single merged file.
-2. `init-nominatim.sh` runs as the container entrypoint and prepares that merged file.
-3. The `/data` volume (`nominatim_pbf`) persists the merged file, so repeated starts do not re-download/re-merge.
-4. The PostgreSQL volume (`nominatim_data`) persists Nominatim's database.
-
-What `init-nominatim.sh` does:
-
-1. Checks if `/data/merged.osm.pbf` exists.
-2. If missing, installs required tools (`wget`, `osmium-tool`, `ca-certificates`).
-3. Downloads multiple regional extracts (currently Belgium, Oberfranken, Freiburg) from Geofabrik.
-4. Merges them with `osmium merge` into `/data/merged.osm.pbf`.
-5. Removes temporary per-region files to save disk space.
-6. Executes the original Nominatim startup command (`/app/start.sh`) so normal import/startup continues.
-
-To use other regions, edit `init-nominatim.sh` and replace/add `wget` input files plus the `osmium merge` input list.
+---
 
 ## API Endpoints
 
-This service exposes a small HTTP API (FastAPI). Two commonly used endpoints are shown below.
+The service runs on port **80** by default. All endpoints are JSON-based.
 
-- **Health check — GET /**
+### `GET /` — Health Check
 
-    Request:
-
-    ```bash
-    curl -s http://localhost/ | jq
-    ```
-
-    Example response:
-
-    ```json
-    {
-        "status": "running",
-        "endpoints": ["/mcp"]
-    }
-    ```
-
-- **Agent Endpoints**
-
-    For quick testing you can also call the agent HTTP endpoints directly.
-
-    **Free-form Query — `POST /agent/query`**
-
-    ```bash
-    curl -X POST http://localhost/agent/query \
-        -H "Content-Type: application/json" \
-        -d '{"query": "Return the openstreetmaps URI of location 'Station Gent-Sint-Pieters'. Keep searching untill you find closest match."}'
-    ```
-
-    **Structured Query — `POST /agent/query_structured`**
-
-    Target specific entity classes. Currently supported classes include: **Administrative Body**. **Mandatary** is supported but only for Flemish municiplaties, to enable it add or uncomment the "centrale vindplaats" sparql endpoint in the config.
-
-    ```bash
-    curl -X POST http://localhost/agent/query_structured \
-        -H "Content-Type: application/json" \
-        -d '{"entity_class": "Administrative Body", "entity_label": "Vast Bureau", "location": "Gent"}'
-    ```
-
-    **Research Query - `POST /agent/research`**
-
-    Use this endpoint for free-form research questions where the full message and tool-call breakdown is useful.
-
-    ```bash
-    curl -X POST http://localhost/agent/research \
-        -H "Content-Type: application/json" \
-        -d '{"query": "Which SPARQL endpoint and query pattern should I use to find administrative bodies in Gent?"}'
-    ```
-
-    The response includes `answer`, `sources`, `sparql_results`, `messages`, `tool_calls`, `tool_results`, `trace`, and `raw_response`.
-
-    - **MCP SSE endpoint — `/mcp/sse`**
-
-    The MCP server is mounted under `/mcp`. To open a Server-Sent Events (SSE) stream use:
-
-    ```bash
-    curl -N -H "Accept: text/event-stream" http://localhost/mcp/sse
-    ```
-
-    The exact event format depends on the MCP client/server interaction. For interactive usage, connect an MCP-capable client (or use the `fastmcp` client) and exchange the MCP messages over the SSE transport.
-
-
-
-## Run with tasks
-
-In a previous step of the pipeline, the NER service will have detected ELI-related entities, such as mandatees, governmental bodies...
-This will used as input container for the entity linking task.
-
-### Create NEL task with governmental body as input container
-
-Open your local SPARQL query editor (by default configured to run on http://localhost:8890/sparql as set by lblod/app-decide), and run the following query to create a Task:
+```bash
+curl -s http://localhost/ | jq
 ```
+
+```json
+{ "status": "running", "endpoints": ["/mcp"] }
+```
+
+---
+
+### `POST /agent/query` — Free-form Entity Linking
+
+Run a general-purpose entity linking query. The agent uses all enabled tools and returns structured results.
+
+**Request:**
+
+```json
+{ "query": "Find the OpenStreetMap URI for Station Gent-Sint-Pieters" }
+```
+
+**Response:** `SparqlResponse`
+
+```json
+{
+  "results": [
+    {
+      "uri": "https://www.openstreetmap.org/node/123456",
+      "label": "Station Gent-Sint-Pieters",
+      "location": "Gent",
+      "reasoning": "Matched by name in Nominatim search..."
+    }
+  ]
+}
+```
+
+---
+
+### `POST /agent/query_structured` — Structured Entity Linking
+
+Target a specific entity class. The agent is scoped to only the tools and template defined for that class in `config.json`.
+
+**Request:**
+
+```json
+{
+  "entity_class": "Administrative Body",
+  "entity_label": "Vast Bureau",
+  "location": "Gent"
+}
+```
+
+**Response:** `SparqlResponse` (same schema as above)
+
+Supported entity classes (configurable via `config.json`):
+- **Administrative Body** — resolves via SPARQL
+- **Location** — resolves via Nominatim
+- **Mandatary** — resolves via SPARQL (Flemish municipalities only; requires "centrale vindplaats" endpoint)
+
+---
+
+### `POST /agent/research` — Research Query
+
+Free-form research with full message trace and tool-call breakdown. Supports conversation history via the `messages` field.
+
+**Request:**
+
+```json
+{
+  "query": "Which SPARQL endpoint and query pattern should I use to find administrative bodies in Gent?",
+  "messages": [
+    { "role": "user", "content": "previous question..." },
+    { "role": "assistant", "content": "previous answer..." }
+  ]
+}
+```
+
+**Response:** `ResearchResponse`
+
+```json
+{
+  "answer": "Based on the available endpoints...",
+  "sources": ["http://..."],
+  "sparql_results": [{ "tool": "execute_sparql_query", "result": "..." }],
+  "messages": [...],
+  "tool_calls": [...],
+  "tool_results": [...],
+  "trace": "Human-readable execution trace",
+  "raw_response": { "plan": [...], "step_results": [...] }
+}
+```
+
+---
+
+### `POST /agent/research/stream` — Streaming Research (SSE)
+
+Same as `/agent/research` but streams progress as Server-Sent Events. Useful for real-time UI updates.
+
+**Request:** Same as `/agent/research`
+
+**Response:** `text/event-stream` with JSON events:
+
+| Event | Description |
+|-------|-------------|
+| `graph` | Graph structure (Mermaid diagram) |
+| `retrieve` | Retrieval phase completed |
+| `plan` | Initial plan generated |
+| `step_done` | A plan step completed |
+| `replan` | Plan revised after failure |
+| `validate` | Final answer synthesized |
+| `done` | Execution complete |
+| `error` | An error occurred |
+
+**Example client:**
+
+```javascript
+const response = await fetch('/agent/research/stream', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ query: "Find all municipalities in West-Flanders" })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  for (const line of decoder.decode(value).split('\n')) {
+    if (line.startsWith('data: ')) {
+      const event = JSON.parse(line.slice(6));
+      console.log(`[${event.event}]`, event.data);
+    }
+  }
+}
+```
+
+---
+
+### `POST /delta` — Delta Notification (Task Trigger)
+
+Receives delta notifications from the mu-semtech stack to trigger task processing.
+
+```bash
+curl -X POST http://localhost:80/delta \
+  -H "Content-Type: application/json" \
+  -d '[{"inserts": [...], "deletes": []}]'
+```
+
+Returns `202 Accepted` and processes tasks in the background.
+
+---
+
+## Research Modes
+
+The research endpoint supports two execution strategies, controlled by the `planning_enabled` setting (default: `true`).
+
+### Flat ReAct Mode (`planning_enabled: false`)
+
+A single ReAct agent loop:
+
+1. LLM reads the research system prompt (5-step methodology: analyse → retrieve docs → construct queries → evaluate → synthesize).
+2. Iteratively calls tools (`search_sparql_docs`, `execute_sparql_query`, etc.).
+3. Terminates when a final answer is produced or `research_recursion_limit` is reached.
+4. Hard timeout via `research_timeout`.
+
+Best for: Simple queries, lower latency, smaller models.
+
+### Plan-Execute Graph Mode (`planning_enabled: true`)
+
+A LangGraph state machine with structured planning:
+
+```
+START → retrieve → plan → execute ⇄ monitor → validate → END
+                              ↑         ↓
+                              └── replan ┘
+```
+
+| Node | Purpose |
+|------|---------|
+| **retrieve** | Gathers relevant SPARQL documentation, schemas, and examples |
+| **plan** | LLM generates a step-by-step plan (JSON array of `PlanStep` objects) |
+| **execute** | Runs a ReAct agent scoped to each step's tools and goal |
+| **monitor** | Pure Python — detects stuck loops, timeouts, empty results |
+| **replan** | LLM revises remaining steps based on what worked/failed |
+| **validate** | LLM synthesizes the final answer from all step results |
+
+**Monitoring heuristics:**
+- Consecutive empty results → trigger replan
+- Same tool called repeatedly → force next step
+- Per-step tool call cap (`max_step_tool_calls`) → move on
+- Per-step timeout (`step_timeout_s`) → skip or replan
+
+Best for: Complex multi-hop queries, higher accuracy, detailed audit trail.
+
+### Research Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `research_timeout` | 600s | Hard timeout for the entire research request |
+| `research_recursion_limit` | 30 | Max ReAct iterations (flat mode) |
+| `planning_enabled` | `true` | Use plan-execute graph vs flat ReAct |
+| `streaming_enabled` | `true` | Enable SSE streaming for research |
+| `step_timeout_s` | 90s | Per-step timeout in plan-execute mode |
+| `max_step_tool_calls` | 6 | Max tool invocations per plan step |
+| `max_replans` | 2 | Max plan revisions |
+| `max_interventions_per_step` | 2 | Max monitor nudges before skipping a step |
+
+---
+
+## MCP Server
+
+The MCP server is mounted at `/mcp` and exposes the following tools to any MCP-compatible client:
+
+| Tool | Description |
+|------|-------------|
+| `search_sparql_docs` | Retrieves relevant SPARQL examples and class schemas from the knowledge base |
+| `execute_sparql_query` | Executes a SPARQL query with automatic validation and prefix fixing |
+| `search_location` | Geocodes a location query via Nominatim |
+| `search_web` | Web search via DuckDuckGo |
+
+Connect an MCP client (e.g., Claude Desktop, VS Code Copilot, or any `fastmcp`-compatible client):
+
+```bash
+# SSE transport
+curl -N -H "Accept: text/event-stream" http://localhost/mcp/sse
+```
+
+Tool availability is controlled by the `ENABLED_TOOLS` environment variable.
+
+---
+
+## Task Processing (Delta Pipeline)
+
+The service integrates with the [mu-semtech](https://mu.semte.ch/) microservice stack for automated entity linking as part of a larger pipeline.
+
+### How It Works
+
+1. A Named Entity Recognition (NER) service detects entities in documents and creates `oa:Annotation` resources.
+2. A `task:Task` with operation `named-entity-linking` is created in the triplestore.
+3. The service picks up scheduled tasks (via `/delta` notification or on startup).
+4. For each annotation, the agent resolves the entity to a URI and writes the result back as `skos:exactMatch`.
+
+### Creating a Demo Task
+
+Insert the task into your SPARQL endpoint (default: `http://localhost:8890/sparql`):
+
+```sparql
 PREFIX adms: <http://www.w3.org/ns/adms#>
 PREFIX task: <http://redpencil.data.gift/vocabularies/tasks/>
 PREFIX dct:  <http://purl.org/dc/terms/>
 PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
 PREFIX nfo:  <http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#>
-PREFIX nie:  <http://www.semanticdesktop.org/ontologies/2007/01/19/nie#>
 PREFIX mu:   <http://mu.semte.ch/vocabularies/core/>
 PREFIX skolem: <http://data.lblod.info/id/.well-known/genid/>
-PREFIX org: <http://www.w3.org/ns/org#>
 PREFIX eli: <http://data.europa.eu/eli/ontology#>
 PREFIX oa: <http://www.w3.org/ns/oa#>
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -341,24 +468,25 @@ INSERT DATA {
         task:hasResource <http://data.lblod.info/id/annotation/3472c89c-6869-4e04-bdb3-41a46961e9ee> .
 
     <http://data.lblod.info/id/annotation/3472c89c-6869-4e04-bdb3-41a46961e9ee> a oa:Annotation ;
-                oa:hasBody skolem:demo-entity-linking-statement ;
-                oa:hasTarget <http://data.lblod.info/id/expressions/demo-entity-linking> .
+        oa:hasBody skolem:demo-entity-linking-statement ;
+        oa:hasTarget <http://data.lblod.info/id/expressions/demo-entity-linking> .
 
-    skolem:demo-entity-linking-statement a rdf:Statement ; 
+    skolem:demo-entity-linking-statement a rdf:Statement ;
         rdf:subject <http://data.lblod.info/id/works/demo-entity-linking> ;
         rdf:predicate eli:passed_by ;
         rdf:object skolem:demo-entity-linking-administrative-body .
 
     skolem:demo-entity-linking-administrative-body a <http://data.vlaanderen.be/ns/besluit#Bestuursorgaan> ;
-                                            rdfs:label "Vast Bureau" ;
-                                            dct:spatial "Gent" .
+        rdfs:label "Vast Bureau" ;
+        dct:spatial "Gent" .
   }
 }
 ```
 
-Trigger this task using
-```
-curl -X POST http://localhost:8080/delta \
+### Triggering the Task
+
+```bash
+curl -X POST http://localhost:80/delta \
   -H "Content-Type: application/json" \
   -d '[
     {
@@ -375,33 +503,118 @@ curl -X POST http://localhost:8080/delta \
   ]'
 ```
 
-Or restart the service to pick up open tasks.
+Alternatively, restart the service — it drains open tasks on startup.
 
-This should result in a result container added to the task:
+### Expected Result
 
-```
-<http://data.lblod.info/id/tasks/demo-entity-linking> task:resultsContainer <http://data.lblod.info/id/data-container/c703fbe0-c27c-402b-b0cb-f2ab09f6fc10> .
+The task's result container will contain the original annotation enriched with `skos:exactMatch`:
 
-<http://data.lblod.info/id/data-container/c703fbe0-c27c-402b-b0cb-f2ab09f6fc10>
-	rdf:type	<http://www.semanticdesktop.org/ontologies/2007/03/22/nfo#DataContainer> ;
-	<http://mu.semte.ch/vocabularies/core/uuid>	"c703fbe0-c27c-402b-b0cb-f2ab09f6fc10" ;
-	<http://redpencil.data.gift/vocabularies/tasks/hasResource>	<http://data.lblod.info/id/annotations/70dcb9c5-ec0f-47d1-a87e-27c9fbba24e5> .
-
-<http://data.lblod.info/id/annotations/70dcb9c5-ec0f-47d1-a87e-27c9fbba24e5>
-	rdf:type	oa:Annotation ;
-	<http://mu.semte.ch/vocabularies/core/uuid>	"70dcb9c5-ec0f-47d1-a87e-27c9fbba24e5" ;
-	oa:hasTarget	<http://data.lblod.info/id/expressions/demo-entity-linking> ;
-	oa:hasBody	<http://data.lblod.info/id/.well-known/genid/demo-entity-linking-statement> .
-
-<http://data.lblod.info/id/.well-known/genid/demo-entity-linking-statement>
-	rdf:type	rdf:Statement ;
-	rdf:object	<http://data.lblod.info/id/.well-known/genid/demo-entity-linking-administrative-body> ;
-	rdf:predicate	<http://data.europa.eu/eli/ontology#passed_by> ;
-	rdf:subject	<http://data.lblod.info/id/works/demo-entity-linking> .
-
+```turtle
 <http://data.lblod.info/id/.well-known/genid/demo-entity-linking-administrative-body>
-	rdf:type	<http://data.vlaanderen.be/ns/besluit#Bestuursorgaan> ;
-	rdfs:label	"Vast Bureau" ;
-	dcterms:spatial	"Gent" ;
-	skos:exactMatch	<http://data.lblod.info/id/bestuursorganen/1ab898407eb44f212df82fa0293d7e67ff2fc6c866e45b5a42e6317d27e> .
+    a <http://data.vlaanderen.be/ns/besluit#Bestuursorgaan> ;
+    rdfs:label "Vast Bureau" ;
+    dct:spatial "Gent" ;
+    skos:exactMatch <http://data.lblod.info/id/bestuursorganen/...> .
 ```
+
+---
+
+## Docker Deployment
+
+### Local Development Stack
+
+```bash
+docker compose -f docker-compose.local.yml up -d
+```
+
+This starts:
+- **decide-mcp** — The entity linking service (port 80)
+- **qdrant** — Vector database (port 6333)
+- **ollama** — Local LLM serving (port 11434, auto-pulls `mistral-nemo`)
+- **virtuoso** — SPARQL triplestore (port 8890)
+- **migrations** — Runs SPARQL migrations on startup
+
+### Production Deployment
+
+```yaml
+services:
+  decide-mcp:
+    build: .
+    ports:
+      - "80:80"
+    env_file:
+      - .env
+    environment:
+      - LLM_PROVIDER=openai
+      - QDRANT_HOST=qdrant
+      - MU_SPARQL_ENDPOINT=http://virtuoso:8890/sparql
+      - MCP_SERVER_URL=http://localhost:80/mcp/sse
+      - ENABLED_TOOLS=search_sparql_docs,execute_sparql_query,search_location
+    volumes:
+      - ./config.json:/config/config.json
+      - ./data:/app/data
+    depends_on:
+      - qdrant
+      - virtuoso
+
+  qdrant:
+    image: qdrant/qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  virtuoso:
+    image: redpencil/virtuoso:1.4.0-rc.1
+    environment:
+      SPARQL_UPDATE: 'true'
+    volumes:
+      - ./config/virtuoso/virtuoso.ini:/data/virtuoso.ini
+      - virtuoso_data:/data
+
+volumes:
+  qdrant_data:
+  virtuoso_data:
+```
+
+### Running Without Docker
+
+```bash
+# Set environment variables or create .env file
+export LLM_PROVIDER=openai
+export OPENAI_API_KEY=sk-...
+
+# Start the server
+python -m src.api
+```
+
+The server starts on `http://0.0.0.0:80`.
+
+---
+
+## Nominatim Setup for Multiple Regions
+
+To support geocoding across multiple regions, use a custom entrypoint script that merges OSM extracts:
+
+```yaml
+nominatim:
+  image: mediagis/nominatim:4.2
+  environment:
+    - PBF_PATH=/data/merged.osm.pbf
+  shm_size: '1gb'
+  volumes:
+    - nominatim_pbf:/data
+    - nominatim_data:/var/lib/postgresql/14/main
+    - ./init-nominatim.sh:/app/init-nominatim.sh
+  entrypoint: /bin/bash /app/init-nominatim.sh
+  ports:
+    - "8080:8080"
+```
+
+**How `init-nominatim.sh` works:**
+
+1. Checks if `/data/merged.osm.pbf` exists.
+2. If missing: installs `wget`, `osmium-tool`; downloads regional extracts from Geofabrik (Belgium, Oberfranken, Freiburg by default).
+3. Merges them with `osmium merge` into a single PBF file.
+4. Cleans up temporary files.
+5. Starts Nominatim import via `/app/start.sh`.
+
+To add/change regions, edit the download URLs in `init-nominatim.sh`.
