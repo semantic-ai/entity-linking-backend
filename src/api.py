@@ -1,11 +1,13 @@
 import asyncio
 import contextlib
+import json
 import threading
 from typing import AsyncIterator, Dict, List, Optional
 from pydantic import BaseModel
 from src.job import process_open_tasks, startup_tasks
 
 from fastapi import FastAPI, APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import StreamingResponse
 
 from src.mcp_server import mcp
 from src.agent import Agent, SparqlResponse, ResearchResponse
@@ -85,6 +87,34 @@ def run_research_request(request: ResearchRequest):
             status_code=500,
             detail=f"Research request failed: {str(e)}. Check server logs for the full trace.",
         )
+
+
+@router.post("/agent/research/stream")
+def stream_research_request(request: ResearchRequest):
+    """Stream research progress as Server-Sent Events (SSE).
+
+    Each event is a JSON line: {"event": "...", "data": {...}}
+    Events: graph, retrieve, plan, step_done, replan, validate, done, error
+    """
+    logger.info(f"Received streaming research query: {request.query}")
+    if not agent_instance:
+        raise HTTPException(status_code=500, detail="Agent not initialized")
+
+    def event_generator():
+        try:
+            for event in agent_instance.stream_research_request(
+                request.query, messages=request.messages
+            ):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            logger.error(f"Error in streaming research: {e}")
+            yield f"data: {json.dumps({'event': 'error', 'data': {'detail': str(e)}})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
     
 @router.get("/")
 async def health():
