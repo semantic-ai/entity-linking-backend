@@ -88,9 +88,10 @@ class NamedEntityLinkingTask(DecisionTask):
 
         Returns:
             String containing the governing unit URI or
-            "Unknown URI" in case no governing unit was provided.
+        Raises:
+            ValueError in case no governing unit was provided.
         """
-        governing_unit_uri = "Unknown URI"
+        governing_unit_uri = None
 
         q = Template(f"""
             {get_prefixes_for_query("task", "dct", "nfo", "nie")}
@@ -111,6 +112,8 @@ class NamedEntityLinkingTask(DecisionTask):
         bindings = query(q, sudo=True).get("results", {}).get("bindings", [])
         if bindings:
             governing_unit_uri = bindings[0]["resource"]["value"]
+        else:
+            raise ValueError("No valid governing unit provided")
 
         return governing_unit_uri
     
@@ -124,9 +127,10 @@ class NamedEntityLinkingTask(DecisionTask):
 
         Returns:
             String containing the name of the governing unit or
-            "Unknown name" in case the name could not be retrieved.
+        Raises:
+            ValueError in case the name could not be retrieved.
         """
-        governing_unit_name = "Unknown name"
+        governing_unit_name = None
 
         q = Template(f"""
             {get_prefixes_for_query("skos")}
@@ -140,6 +144,8 @@ class NamedEntityLinkingTask(DecisionTask):
         bindings = query(q, sudo=True).get("results", {}).get("bindings", [])
         if bindings:
             governing_unit_name = bindings[0]["name"]["value"]
+        else:
+            raise ValueError("No valid governing unit provided: missing name")
 
         return governing_unit_name
     
