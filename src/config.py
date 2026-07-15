@@ -42,8 +42,15 @@ class Settings(BaseModel):
     embedding_provider: str = os.getenv("EMBEDDING_PROVIDER", "ollama")
     embedding_dimensions: int = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
 
-    # Search
+    # Elasticsearch vector search
     search_endpoint: str = os.getenv("SEARCH_ENDPOINT", "http://search")
+    embedding_api_url: Optional[str] = os.getenv("EMBEDDING_API_URL")
+    elastic_search_k: int = int(os.getenv("ELASTIC_SEARCH_K", "30"))
+    elastic_search_num_candidates: int = int(os.getenv("ELASTIC_SEARCH_NUM_CANDIDATES", "100"))
+    elastic_search_min_score: float = float(os.getenv("ELASTIC_SEARCH_MIN_SCORE", "0.72"))
+    elastic_search_keyword_fields: str = os.getenv("ELASTIC_SEARCH_KEYWORD_FIELDS", "description.*")
+    request_timeout: float = float(os.getenv("REQUEST_TIMEOUT", "10.0"))
+    title_fallback_chars: int = int(os.getenv("TITLE_FALLBACK_CHARS", "80"))
 
     ollama_host: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     ollama_model: str = os.getenv("OLLAMA_MODEL", "mistral-nemo")
@@ -72,7 +79,7 @@ class Settings(BaseModel):
         t.strip()
         for t in os.getenv(
             "ENABLED_TOOLS",
-            "search_location,search_sparql_docs,execute_sparql_query",
+            "search_location,search_sparql_docs,execute_sparql_query,search_expressions",
         ).split(",")
         if t.strip()
     ]

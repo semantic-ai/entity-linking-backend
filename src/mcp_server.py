@@ -77,6 +77,39 @@ async def search_web(query: str, max_results: int = 5) -> str:
     return "No results found."
 
 
+# --- Elasticsearch Tools ---
+
+@mcp.tool()
+async def search_expressions(
+    question: str,
+    top_n: int = 5,
+    local_authority: Optional[str] = None,
+    keyword: Optional[str] = None,
+    vector: bool = True,
+) -> str:
+    """Find relevant local-authority decisions using semantic search, keyword search, or both.
+
+    Supports three modes controlled by *vector* and *keyword*:
+    - **kNN only** (default): embed *question* and run semantic similarity search.
+    - **Hybrid**: set *keyword* alongside *vector=True* to combine kNN with BM25.
+    - **BM25 only**: set *vector=False* and provide *keyword* for pure keyword search.
+
+    Args:
+        question: The natural-language question to search for.
+        top_n: Maximum number of results to return (1–20).
+        local_authority: URI of the owning body to restrict results to (optional).
+        keyword: Optional keyword string for BM25 full-text matching (optional).
+        vector: Whether to include kNN semantic search (default ``True``).
+
+    Returns:
+        JSON array of matching expressions, each with ``uri``, ``score``,
+        ``title``, ``content``, and ``download_url``.
+    """
+    from src.tools.elastic_search import search_expressions as _search_expressions
+    results = await _search_expressions(question, top_n, local_authority, keyword, vector)
+    return json.dumps(results)
+
+
 # --- SPARQL Tools ---
 
 PROMPT_TOOL_SPARQL = """Formulate a precise SPARQL query to access specific linked data resources and answer the user's question.

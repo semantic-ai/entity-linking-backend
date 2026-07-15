@@ -102,10 +102,6 @@ LLM_MAX_RETRIES=3
 LLM_REQUEST_TIMEOUT=300              # seconds
 TEMPERATURE=0.0
 
-# --- OpenAI ---
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4.1
-OPENAI_ENDPOINT=                     # optional, for Azure or proxies
 
 # --- Mistral ---
 MISTRAL_API_KEY=...
@@ -346,7 +342,7 @@ Returns `202 Accepted` and processes tasks in the background.
 
 ---
 
-## Research Modes
+## Research Mode
 
 The research endpoint supports two execution strategies, controlled by the `planning_enabled` setting (default: `true`).
 
