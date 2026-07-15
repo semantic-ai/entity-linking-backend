@@ -22,7 +22,7 @@ from langchain_core.messages import AIMessage
 
 from helpers import logger
 from src.agent_helpers.mcp_tools import create_mcp_tool
-from src.agent_helpers.models import AgentConfig, SparqlResponse, SparqlResult, ResearchResponse
+from src.agent_helpers.models import AgentConfig, SparqlResponse, ResearchResponse
 from src.agent_helpers.serialization import json_safe, trace_messages, serialize_agent_message, extract_tool_calls, extract_tool_results
 from src.agent_helpers.prompts import RESEARCH_SYSTEM_PROMPT
 from src.agent_helpers.logging_callbacks import AgentStepLogger
@@ -131,6 +131,7 @@ class Agent:
                 request_timeout=self.config.llm_request_timeout,
             )
 
+
     # -- Initialization --
 
     def initialize(self):
@@ -152,7 +153,7 @@ class Agent:
         self.cached_tools = {t.name: t for t in self.lc_tools}
         self.agent = create_agent(self.llm, tools=self.lc_tools, response_format=SparqlResponse)
         logger.info("Agent initialized successfully")
-
+        
     def _ensure_initialized(self):
         if not hasattr(self, "cached_tools"):
             self.initialize()
@@ -186,79 +187,6 @@ class Agent:
 
     # -----------------------------------------------------------------------
     # Structured SPARQL requests
-    # -----------------------------------------------------------------------
-
-    def run_request(self, query: str) -> SparqlResponse:
-        """Run a general query and return structured SparqlResponse."""
-        return self._run_request(query)
-
-    def run_sparql_request_structured(self, entity_class: str, entity_label: str, location: str = "N/A") -> SparqlResponse:
-        """Run a SPARQL entity-finding task with class-specific config."""
-        query_template = (
-            "Write a SPARQL query to find the URI of the {classification_class} "
-            "{entity_label} in region {location}, execute it and return the results. "
-            "Keep iterating until you find the best possible match. Provide reasoning for your selection."
-        )
-        specific_tools = None
-
-        if self.config.entity_class_configs:
-            class_key = entity_class.strip().lower()
-            mapping = {k.strip().lower(): v for k, v in self.config.entity_class_configs.items()}
-            if class_key in mapping:
-                conf = mapping[class_key]
-                logger.info(f"Found specific configuration for class '{class_key}': {conf}")
-                specific_tools = conf.get("tools")
-                query_template = conf.get("query_template", query_template)
-            else:
-                logger.warning(
-                    f"No entity_class_configs entry for '{entity_class}' "
-                    f"(normalized: '{class_key}'). Known keys: {sorted(mapping.keys())}. "
-                    f"Falling back to default template."
-                )
-
-        formatted_query = query_template.format(
-            classification_class=entity_class,
-            entity_label=entity_label,
-            location=location,
-        )
-        return self._run_request(formatted_query, specific_tools=specific_tools)
-
-    def _run_request(self, query: str, specific_tools: Optional[List[str]] = None) -> SparqlResponse:
-        tools_to_use = self._select_tools(specific_tools)
-        if not tools_to_use:
-            logger.warning("No tools available for this request.")
-        logger.info(f"[RUN] Tools used: {[t.name for t in tools_to_use]}")
-
-        temp_agent = create_agent(self.llm, tools=tools_to_use, response_format=SparqlResponse)
-
-        try:
-            result = temp_agent.invoke({"messages": [{"role": "user", "content": query}]})
-            messages = result.get("messages", []) if isinstance(result, dict) else []
-
-            if messages and self.config.tracing_enabled:
-                trace_messages(messages)
-
-            if isinstance(result, dict) and "structured_response" in result:
-                return result["structured_response"]
-            if isinstance(result, SparqlResponse):
-                return result
-            if hasattr(result, "structured_response"):
-                return result.structured_response
-
-            error_msg = "Could not find structured_response in agent output."
-            if messages:
-                content = getattr(messages[-1], "content", "")
-                if content:
-                    error_msg += f"\n\nLast agent response:\n{content}"
-            raise ValueError(error_msg)
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            _handle_llm_error(e, "sparql request")
-
-    # -----------------------------------------------------------------------
-    # Research requests (free-form)
     # -----------------------------------------------------------------------
 
     def run_research_request(

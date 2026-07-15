@@ -4,15 +4,12 @@ import json
 import threading
 from typing import AsyncIterator, Dict, List, Optional
 from pydantic import BaseModel
-from src.job import process_open_tasks, startup_tasks
 
-from fastapi import FastAPI, APIRouter, BackgroundTasks, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException
+from src.agent import Agent, ResearchResponse
 from fastapi.responses import StreamingResponse
 
 from src.mcp_server import mcp
-from src.agent import Agent, SparqlResponse, ResearchResponse
-from src.task import NamedEntityLinkingTask
-from decide_ai_service_base.schema import NotificationResponse
 
 # Setup logging
 from helpers import logger
@@ -27,10 +24,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global agent_instance
 
     agent_instance = initialize_agent()
-    NamedEntityLinkingTask.agent_instance = agent_instance
-
-    logger.info("Running startup tasks...")
-    threading.Thread(target=startup_tasks, name="startup-tasks", daemon=True).start()
 
     yield
 
@@ -51,25 +44,6 @@ class ResearchRequest(BaseModel):
 router = APIRouter()
 
 # Endpoints
-
-@router.post("/agent/query")
-def run_request(request: QueryRequest):
-    """Perform a free-form entity linking query via the agent."""
-    if not agent_instance:
-         raise HTTPException(status_code=500, detail="Agent not initialized")
-    return agent_instance.run_request(request.query)
-
-@router.post("/agent/query_structured", response_model=SparqlResponse)
-def run_sparql_request_structured(request: SparqlRequest):
-    """Perform a structured entity linking via the agent."""
-    logger.info(f"Received structured query request: {request}")
-    if not agent_instance:
-        raise HTTPException(status_code=500, detail="Agent not initialized")
-    return agent_instance.run_sparql_request_structured(
-        entity_class=request.entity_class,
-        entity_label=request.entity_label,
-        location=request.location
-    )
 
 @router.post("/agent/research", response_model=ResearchResponse)
 def run_research_request(request: ResearchRequest):
@@ -144,13 +118,3 @@ def mount_mcp(app: FastAPI):
             logger.warning("Could not find suitable mounting method for MCP object. /mcp endpoint might not be available.")
     except Exception as e:
         logger.error(f"Failed to mount MCP app: {e}")
-
-@router.post("/delta", status_code=202)
-def delta(background_tasks: BackgroundTasks) -> NotificationResponse:
-    # naively start processing on any incoming delta
-    logger.info("Received delta notification with")
-    background_tasks.add_task(process_open_tasks)
-    return NotificationResponse(
-        status="accepted",
-        message="Processing started",
-    )

@@ -41,7 +41,6 @@ class AgentConfig(BaseModel):
     verbose: bool = False
     tracing_enabled: bool = False
     enabled_tools: Optional[List[str]] = None
-    entity_class_configs: Optional[Dict[str, Any]] = None
     llm_max_retries: int = 3
     llm_request_timeout: int = 60
 
@@ -59,3 +58,5 @@ class AgentConfig(BaseModel):
     max_interventions_per_step: int = 2
     max_step_tool_calls: int = 6
     max_replans: int = 2
+
+    

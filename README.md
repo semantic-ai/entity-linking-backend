@@ -153,19 +153,7 @@ Use `config_example.json` as a template. The config file defines SPARQL endpoint
       "void_file": "data/queries/local/local_sparql_void.ttl",
       "examples_file": "data/queries/local/local_sparql_examples.ttl"
     }
-  ],
-  "entity_class_configs": {
-    "administrative_body": {
-      "aliases": ["administrative body", "http://www.w3.org/ns/org#Organization"],
-      "tools": ["search_sparql_docs", "execute_sparql_query"],
-      "query_template": "Write a SPARQL query to find the URI of the {classification_class} {entity_label} in region {location}..."
-    },
-    "location": {
-      "aliases": ["http://purl.org/dc/terms/Location"],
-      "tools": ["search_location"],
-      "query_template": "Search for the {classification_class} {entity_label} in region {location}..."
-    }
-  }
+  ]
 }
 ```
 

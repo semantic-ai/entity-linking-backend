@@ -24,6 +24,7 @@ class Settings(BaseModel):
     # Agent & API
     mcp_url: str = os.getenv("MCP_SERVER_URL", "http://localhost:80/mcp/sse")
     llm_provider: str = os.getenv("LLM_PROVIDER", "openai").lower()
+    streaming_enabled: bool = os.getenv("STREAMING_ENABLED", "true").lower() == "true"
 
     # OpenAI
     openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
@@ -87,12 +88,6 @@ class Settings(BaseModel):
     # Stack
     mu_sparql_endpoint: str = os.getenv("MU_SPARQL_ENDPOINT", "http://virtuoso:8890/sparql")
 
-    linking_job_type: str = os.getenv(
-        "LINKING_JOB_TYPE",
-        "http://lblod.data.gift/id/jobs/concept/JobType/entity-linking",
-    )
-    resource_base: str = os.getenv("RESOURCE_BASE", "http://data.lblod.info/id/")
-
     def get_llm_config(self):
         """Return (api_key, endpoint, model) for the configured LLM provider."""
         if self.llm_provider == "mistral":
@@ -131,41 +126,5 @@ if not endpoints:
             shapes_folder="data/queries/shacl",
         )
     ]
-
-
-def _normalize_entity_class_configs(raw: dict) -> dict:
-    """Lowercase + strip keys; expand each entry's `aliases` list as extra keys
-    pointing at the same value. Aliases are removed from the stored value."""
-    out: dict = {}
-    for k, v in raw.items():
-        if not isinstance(v, dict):
-            out[k.strip().lower()] = v
-            continue
-        aliases = v.get("aliases", []) or []
-        clean_v = {kk: vv for kk, vv in v.items() if kk != "aliases"}
-        out[k.strip().lower()] = clean_v
-        for alias in aliases:
-            if isinstance(alias, str):
-                out[alias.strip().lower()] = clean_v
-    return out
-
-
-entity_class_configs: dict = {}
-if isinstance(_file_config.get("entity_class_configs"), dict):
-    entity_class_configs = _normalize_entity_class_configs(_file_config["entity_class_configs"])
-if not entity_class_configs:
-    entity_class_configs = _normalize_entity_class_configs({
-        "administrative_body": {
-            "tools": ["search_sparql_docs", "execute_sparql_query"],
-            "query_template": "First, use the 'search_sparql_docs' tool to search for information and examples on how to query for a {classification_class}. Then, write a SPARQL query to find the URI of the {classification_class} '{entity_label}' in region '{location}'. Base your query ONLY on the retrieved documentation, using ONLY the endpoints explicitly mentioned in those examples. Execute the query using 'execute_sparql_query' and return the results. Keep iterating until you find the best possible match. Provide reasoning for your selection.",
-            "aliases": ["administrative body", "http://www.w3.org/ns/org#Organization"],
-        },
-        "location": {
-            "tools": ["search_location"],
-            "query_template": "Search for the {classification_class} {entity_label} in region {location}. Return the best matching URI.\nProvide reasoning for your selection.",
-            "aliases": ["http://purl.org/dc/terms/Location"],
-        },
-    })
-
 
 qdrant_client = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)

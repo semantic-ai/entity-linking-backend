@@ -2,10 +2,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import builtins
-from src.job import startup_tasks
 from src.api import router, lifespan, mount_mcp
-
-from helpers import logger, query, update
 
 # The semtech/mu-python-template injects the 'app' instance. We retrieve it here safely.
 app: FastAPI = getattr(builtins, "app", FastAPI())
