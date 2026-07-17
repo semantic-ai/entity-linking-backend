@@ -87,7 +87,7 @@ class NamedEntityLinkingTask(DecisionTask):
         of the first task in the same job as this task.
 
         Returns:
-            String containing the governing unit URI or
+            String containing the governing unit URI.
         Raises:
             ValueError in case no governing unit was provided.
         """
@@ -126,7 +126,7 @@ class NamedEntityLinkingTask(DecisionTask):
             governing_unit_uri: String containing the URI of the governing unit
 
         Returns:
-            String containing the name of the governing unit or
+            String containing the name of the governing unit.
         Raises:
             ValueError in case the name could not be retrieved.
         """
