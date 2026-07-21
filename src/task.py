@@ -133,9 +133,11 @@ class NamedEntityLinkingTask(DecisionTask):
         governing_unit_name = None
 
         q = Template(f"""
-            {get_prefixes_for_query("skos")}
+            {get_prefixes_for_query("skos", "dct")}
             SELECT ?name WHERE {{
-                $governing_unit skos:prefLabel ?name .
+                $governing_unit skos:prefLabel ?label .
+                OPTIONAL {{ $governing_unit dct:identifier ?identifier . }} 
+                BIND(IF(BOUND(?identifier), ?identifier, ?label) AS ?name)
             }} LIMIT 1
         """).substitute(
             governing_unit=sparql_escape_uri(governing_unit_uri)

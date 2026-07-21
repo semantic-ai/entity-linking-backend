@@ -44,7 +44,7 @@ except Exception as e:
 # --- Legacy Tools ---
 
 @mcp.tool()
-async def search_location(query: str, city: Optional[str] = "Gent", country: Optional[str] = "BE,DE") -> str:
+async def search_location(query: str, city: Optional[str] = "Gent") -> str:
     """
     Search for a location (entity linking) based on a query, city, and country.
     Returns the geocoded result including address and coordinates.
@@ -57,7 +57,7 @@ async def search_location(query: str, city: Optional[str] = "Gent", country: Opt
         str: JSON string of the geocoding result containing OpenStreetMap URI, address, latitude, and longitude.
     """
     geocoder = NominatimGeocoder(base_url=settings.nominatim_endpoint)
-    result = await geocoder.search(query=query, city=city, country=country)
+    result = await geocoder.search(query=query, city=city)
     return json.dumps(result) if result else "No results found"
 
 @mcp.tool()
