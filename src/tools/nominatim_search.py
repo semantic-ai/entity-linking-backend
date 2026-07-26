@@ -25,7 +25,7 @@ class NominatimGeocoder:
         self._last = time.monotonic()
 
     @lru_cache(maxsize=1024)
-    def search(self, query: str, city: Optional[str] = None, country: Optional[str] = "BE,DE", limit: int = 1) -> Optional[Dict[str, Any]]:
+    def search(self, query: str, city: Optional[str] = None, limit: int = 1) -> Optional[Dict[str, Any]]:
         """
         Query /search on the Nominatim server.
         Returned dict contains: query, display_name, lat, lon, importance, place_id,
@@ -48,10 +48,7 @@ class NominatimGeocoder:
             "extratags": 0,
             "namedetails": 0,
         }
-        
-        if country and country.strip():
-            params["countrycodes"] = country.strip()
-        
+            
         try:
             with httpx.Client() as client:
                 resp = client.get(f"{self.base_url}/search", params=params, timeout=self.timeout)
