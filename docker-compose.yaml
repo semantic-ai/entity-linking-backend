@@ -35,9 +35,6 @@ services:
       - ./:/app
       - ./config.json:/config/config.json:ro
       - ./docker-compose.yaml:/tmp/docker-compose.yaml
-      - ./my-example-config:/config/example
-      - ./my-example-config/a.json:/data/example
-
 networks:
   app-decide_default:
     external: true
