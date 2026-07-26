@@ -22,20 +22,19 @@ services:
       OLLAMA_HOST: "http://ollama:11434"
       NOMINATIM_ENDPOINT: "http://nominatim:8080/"
       MCP_SERVER_URL: "http://localhost:80/mcp/sse"
-      ENABLED_TOOLS: "search_sparql_docs,execute_sparql_query,search_location"
       JOB_GRAPH: "http://mu.semte.ch/graphs/harvesting"
       AI_GRAPH: "http://mu.semte.ch/graphs/public/pdf"
       LLM_PROVIDER: "mistral"
       LLM_MAX_RETRIES: 3
       MISTRAL_MODEL: "ministral-14b-2512"
-      FORCE_VERSIONED_AGENT_URI: true
-      CONFIGURED_AGENT_URI: http://lblod.data.gift/id/components/named-entity-linking/decide/commit/92a6988130508c49c87b20d10bdd06bf188162b5
-      CONFIG_REPO_URL: https://github.com/lblod/app-decide/commit/92a6988130508c49c87b20d10bdd06bf188162b5
+      CONFIG_PATH: "/config/config.json"
+      COMPOSE_FILE: /tmp/docker-compose.yaml
+      COMPOSE_SERVICE: nel-service
     restart: no
     volumes:
       - ./:/app
-      - ./config.json:/usr/src/app/config.json:ro
-
+      - ./config.json:/config/config.json:ro
+      - ./docker-compose.yaml:/tmp/docker-compose.yaml
 networks:
   app-decide_default:
     external: true
