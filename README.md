@@ -236,6 +236,58 @@ What `init-nominatim.sh` does:
 
 To use other regions, edit `init-nominatim.sh` and replace/add `wget` input files plus the `osmium merge` input list.
 
+### Location overrides for pilot cities
+
+The `location` entity class (`dct:terms/Location`) is resolved deterministically via
+`src/linkers/location.py`, which calls Nominatim's free-text `/search` with the
+recognized entity label. On a merged multi-region OSM extract, that search can rank
+the wrong point of interest for an ambiguous label, e.g. a `Rathaus` search can just
+as easily surface a bus stop, a parking lot, or a town hall in an unrelated town named
+the same as the target street, instead of the city hall that is wanted.
+
+To fix a specific recurring mismatch, add an entry to `location_overrides` in
+`config.json`, keyed by the entity label exactly as it's recognized in the text
+(case-insensitive):
+
+```json
+{
+  "location_overrides": {
+    "bamberg": {
+      "uri": "https://www.openstreetmap.org/way/27009786",
+      "label": "Altes Rathaus, Bamberg",
+      "aliases": ["Rathaus Bamberg", "Stadt Bamberg"]
+    },
+    "freiburg": {
+      "uri": "https://www.openstreetmap.org/relation/6824",
+      "lat": 47.9961443,
+      "lon": 7.8491682,
+      "label": "Neues Rathaus, Freiburg im Breisgau"
+    }
+  }
+}
+```
+
+When a recognized label matches a key **or one of its `aliases`** (case-insensitive),
+Nominatim search is skipped entirely and:
+
+- **`uri` only** : the linker looks up that OSM feature directly (via `/lookup`) and
+  enriches the result with its address/geometry, same as a normal search hit.
+- **`uri` + `lat`/`lon`** : the linker skips the network lookup too and builds the
+  location straight from the given coordinates. Use this when you already know the
+  exact point and don't want a dependency on the OSM feature still existing/matching.
+
+Use `aliases` when multiple surface forms should resolve to the same point (e.g. NER
+might recognize a document as mentioning "Bamberg", "Rathaus Bamberg", or "Stadt
+Bamberg" for what is really the same city hall), list the variants once instead of
+duplicating the whole override block per label. `label` is only used as the output
+`rdfs:label` on the linked location; it's not part of matching, so all aliases produce
+the same canonical label.
+
+`uri` is always required, it becomes the `skos:exactMatch` target for the linked
+entity, so it should be a stable URI (typically the OSM node/way/relation URL, found
+via a search on [nominatim.openstreetmap.org](https://nominatim.openstreetmap.org) or
+[openstreetmap.org](https://www.openstreetmap.org)).
+
 ## API Endpoints
 
 This service exposes a small HTTP API (FastAPI). Two commonly used endpoints are shown below.
