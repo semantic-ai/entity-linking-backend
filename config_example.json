@@ -24,5 +24,18 @@
       ],
       "query_template": "Search for the {classification_class} {entity_label} in region {location}. Return the best matching URI.\nProvide reasoning for your selection."
     }
+  },
+  "location_overrides": {
+    "freiburg": {
+      "uri": "https://www.openstreetmap.org/relation/6824",
+      "lat": 47.9961443,
+      "lon": 7.8491682,
+      "label": "Neues Rathaus, Freiburg im Breisgau"
+    },
+    "bamberg": {
+      "uri": "https://www.openstreetmap.org/way/27009786",
+      "label": "Altes Rathaus, Bamberg",
+      "aliases": ["Rathaus Bamberg", "Stadt Bamberg"]
+    }
   }
 }

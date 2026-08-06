@@ -149,4 +149,26 @@ if not entity_class_configs:
     })
 
 
+def _normalize_overrides(raw) -> dict:
+    """Casefold + strip keys of a flat {entity_label: override} mapping; expand
+    each entry's `aliases` list as extra keys pointing at the same override
+    (same convention as `_normalize_entity_class_configs`)."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict = {}
+    for k, v in raw.items():
+        if not isinstance(v, dict):
+            continue
+        aliases = v.get("aliases", []) or []
+        clean_v = {kk: vv for kk, vv in v.items() if kk != "aliases"}
+        out[k.strip().casefold()] = clean_v
+        for alias in aliases:
+            if isinstance(alias, str):
+                out[alias.strip().casefold()] = clean_v
+    return out
+
+
+location_overrides: dict = _normalize_overrides(_file_config.get("location_overrides"))
+
+
 qdrant_client = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
