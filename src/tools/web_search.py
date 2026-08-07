@@ -1,7 +1,7 @@
 import time
 import random
 import asyncio
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 from ddgs import DDGS
 from httpx import ReadTimeout, ConnectTimeout

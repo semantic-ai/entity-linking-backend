@@ -5,19 +5,6 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
-# --- Response Models ---
-
-class SparqlResult(BaseModel):
-    uri: str = Field(..., description="The URI of the entity")
-    label: str = Field(..., description="The label of the entity")
-    location: Optional[str] = Field(None, description="The location associated with the entity.")
-    reasoning: str = Field(..., description="The reasoning behind the selection.")
-
-
-class SparqlResponse(BaseModel):
-    results: List[SparqlResult] = Field(..., description="The list of matching entities found")
-
-
 class ResearchResponse(BaseModel):
     answer: str = Field(..., description="The answer or research findings")
     sources: Optional[List[str]] = Field(None, description="Sources or URIs referenced")
@@ -39,24 +26,14 @@ class AgentConfig(BaseModel):
     model: str = "mistral-small"
     temperature: float = 0.0
     verbose: bool = False
-    tracing_enabled: bool = False
-    enabled_tools: Optional[List[str]] = None
+    agent_enabled_tools: Optional[List[str]] = None
     llm_max_retries: int = 3
     llm_request_timeout: int = 60
 
     # Research settings
     research_timeout: int = 600
-    research_recursion_limit: int = 10
-
-    # Plan-execute graph settings
-    planning_enabled: bool = True
-    streaming_enabled: bool = True
-
     retrieve_tools: List[str] = ["search_sparql_docs"]
     execute_tools: Optional[List[str]] = None
     step_timeout_s: int = 90
-    max_interventions_per_step: int = 2
     max_step_tool_calls: int = 6
     max_replans: int = 2
-
-    

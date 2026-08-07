@@ -1,5 +1,12 @@
-import os
+"""Environment-backed runtime settings and JSON-backed endpoint metadata.
+
+Scalar runtime values come only from environment variables (with code
+fallbacks). ``CONFIG_FILE`` supplies the structured SPARQL ``endpoints`` list;
+it is not a second source for scalar settings.
+"""
+
 import json
+import os
 from pathlib import Path
 from typing import List, Optional
 
@@ -7,24 +14,33 @@ from pydantic import BaseModel
 from qdrant_client import QdrantClient
 from sparql_llm.utils import SparqlEndpointLinks
 
-NEL_TASK_OPERATION = "http://lblod.data.gift/id/jobs/concept/TaskOperation/named-entity-linking"
-
 CONFIG_FILE = Path(os.getenv("CONFIG_FILE", "/config/config.json"))
 
 
+def _env_list(name: str, default: str) -> List[str]:
+    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
+
+
+def _optional_env_list(name: str) -> Optional[List[str]]:
+    raw = os.getenv(name)
+    if raw is None:
+        return None
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
 class Settings(BaseModel):
-    """Service configuration. Each field reads its default from an env var with a literal fallback."""
+    """Scalar service settings resolved from environment variables."""
 
-
-
-    # Logging and tracing
+    # Logging
     verbose: bool = os.getenv("VERBOSE", "false").lower() == "true"
-    tracing_enabled: bool = os.getenv("TRACING_ENABLED", "false").lower() == "true"
 
     # Agent & API
     mcp_url: str = os.getenv("MCP_SERVER_URL", "http://localhost:80/mcp/sse")
     llm_provider: str = os.getenv("LLM_PROVIDER", "openai").lower()
-    streaming_enabled: bool = os.getenv("STREAMING_ENABLED", "true").lower() == "true"
+    agent_enabled_tools: List[str] = _env_list(
+        "AGENT_ENABLED_TOOLS",
+        "search_location,search_sparql_docs,execute_sparql_query,search_expressions",
+    )
 
     # OpenAI
     openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
@@ -65,25 +81,18 @@ class Settings(BaseModel):
     auto_init: bool = os.getenv("AUTO_INIT", "true").lower() == "true"
     temperature: float = float(os.getenv("TEMPERATURE", "0.0"))
     llm_max_retries: int = int(os.getenv("LLM_MAX_RETRIES", "3"))
-
-
     llm_request_timeout: int = int(os.getenv("LLM_REQUEST_TIMEOUT", "300"))
+
+    # Research graph
     research_timeout: int = int(os.getenv("RESEARCH_TIMEOUT", "600"))
-    research_recursion_limit: int = int(os.getenv("RESEARCH_RECURSION_LIMIT", "30"))
+    research_retrieve_tools: List[str] = _env_list("RESEARCH_RETRIEVE_TOOLS", "search_sparql_docs")
+    research_execute_tools: Optional[List[str]] = _optional_env_list("RESEARCH_EXECUTE_TOOLS")
+    research_step_timeout_s: int = int(os.getenv("RESEARCH_STEP_TIMEOUT_S", "90"))
+    research_max_step_tool_calls: int = int(os.getenv("RESEARCH_MAX_STEP_TOOL_CALLS", "6"))
+    research_max_replans: int = int(os.getenv("RESEARCH_MAX_REPLANS", "2"))
 
-    # Legacy tools
-    enable_legacy_tools: bool = os.getenv("ENABLE_LEGACY_TOOLS", "false").lower() == "true"
+    # Discovery tools
     nominatim_endpoint: str = os.getenv("NOMINATIM_ENDPOINT", "https://nominatim.openstreetmap.org/")
-
-    # Tool selection
-    enabled_tools: List[str] = [
-        t.strip()
-        for t in os.getenv(
-            "ENABLED_TOOLS",
-            "search_location,search_sparql_docs,execute_sparql_query,search_expressions",
-        ).split(",")
-        if t.strip()
-    ]
 
     # Stack
     mu_sparql_endpoint: str = os.getenv("MU_SPARQL_ENDPOINT", "http://virtuoso:8890/sparql")
@@ -100,19 +109,19 @@ class Settings(BaseModel):
 settings = Settings()
 
 
-# Nested structures (endpoints, entity_class_configs) come from the JSON config file.
-_file_config: dict = {}
+# Only structured endpoint metadata comes from CONFIG_FILE.
+_endpoint_config: dict = {}
 if CONFIG_FILE.exists():
     try:
         with CONFIG_FILE.open("r", encoding="utf-8") as _f:
-            _file_config = json.load(_f)
+            _endpoint_config = json.load(_f)
     except Exception as e:
         print(f"Error loading config from {CONFIG_FILE}: {e}")
 
 
 endpoints: List[SparqlEndpointLinks] = []
-if isinstance(_file_config.get("endpoints"), list):
-    for ep_config in _file_config["endpoints"]:
+if isinstance(_endpoint_config.get("endpoints"), list):
+    for ep_config in _endpoint_config["endpoints"]:
         try:
             endpoints.append(SparqlEndpointLinks(**ep_config))
         except Exception as e:

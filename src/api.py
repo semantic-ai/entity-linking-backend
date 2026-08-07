@@ -1,12 +1,11 @@
-import asyncio
 import contextlib
 import json
-import threading
 from typing import AsyncIterator, Dict, List, Optional
 from pydantic import BaseModel
 
 from fastapi import FastAPI, APIRouter, HTTPException
-from src.agent import Agent, ResearchResponse
+from src.agent import Agent
+from src.agent_helpers.models import ResearchResponse
 from fastapi.responses import StreamingResponse
 
 from src.mcp_server import mcp
@@ -26,15 +25,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     agent_instance = initialize_agent()
 
     yield
-
-# Request Models
-class QueryRequest(BaseModel):
-    query: str
-
-class SparqlRequest(BaseModel):
-    entity_class: str
-    entity_label: str
-    location: str = "N/A"
 
 class ResearchRequest(BaseModel):
     query: str
@@ -92,29 +82,16 @@ def stream_research_request(request: ResearchRequest):
     
 @router.get("/")
 async def health():
-    return {"status": "running", "endpoints": ["/mcp"]}
+    return {
+        "status": "running",
+        "endpoints": ["/mcp/sse", "/agent/research", "/agent/research/stream"],
+    }
 
 def mount_mcp(app: FastAPI):
-    """Mounts the MCP server to the FastAPI app."""
-    # Adapting from Swiss Sparql-llm github
+    """Mount the pinned FastMCP SSE application below ``/mcp``."""
     try:
-        if hasattr(mcp, "streamable_http_app"):
-            app.mount("/mcp", mcp.streamable_http_app(), name="mcp")
-            logger.info("Mounted MCP via streamable_http_app()")
-        elif hasattr(mcp, "http_app"):
-            # Current FastMCP version uses http_app method
-            app.mount("/mcp", mcp.http_app(transport="sse"), name="mcp")
-            logger.info("Mounted MCP via http_app(transport='sse')")
-        elif hasattr(mcp, "sse_app"):
-            # Some versions expose sse_app
-            app.mount("/mcp", mcp.sse_app, name="mcp")
-            logger.info("Mounted MCP via sse_app")
-        elif hasattr(mcp, "_sse_app"):
-             app.mount("/mcp", mcp._sse_app, name="mcp")
-             logger.info("Mounted MCP via _sse_app")
-        else:
-            # If it's the raw FastMCP object and we can't find the app method
-            # We might need to check if the user meant to use a specific adapter
-            logger.warning("Could not find suitable mounting method for MCP object. /mcp endpoint might not be available.")
+        app.mount("/mcp", mcp.http_app(transport="sse"), name="mcp")
+        logger.info("Mounted MCP via FastMCP SSE transport at /mcp/sse")
     except Exception as e:
         logger.error(f"Failed to mount MCP app: {e}")
+        raise

@@ -1,5 +1,6 @@
 .env
 /config/__pycache__
+/config/search/update-handler.store
 /library/__pycache__
 /tools/__pycache__
 *.pyc
@@ -12,8 +13,13 @@ config/virtuoso/virtuoso.ini
 /config/migrations
 test_task_flow.ipynb
 review.md
-development.ipynb
-streamlit_research_app.py
 Documentation/plan-agent-research-flow-improvements.md
 /docs
-langgraph.ipynb
+!/docs/
+/docs/*
+!/docs/phase2-implementation-spec.md
+!/docs/research-mode-v3-plan.md
+!/docs/research-mode-v3-cleanup-audit.md
+/tests
+/docs
+*.ipynb

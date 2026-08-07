@@ -11,7 +11,7 @@ revise the remaining plan steps based on what was learned so far.
 import concurrent.futures
 import json
 import time
-from typing import Any, Annotated, Dict, List, Optional
+from typing import Annotated, List, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
@@ -63,16 +63,10 @@ class ResearchGraphState(TypedDict):
 
     # Monitor state
     step_start_time: float
-    step_tool_calls: int
-    consecutive_empty_results: int
-    same_tool_repeat_count: int
-    last_tool_name: str
-    intervention_count: int
 
     # Results
     step_results: list  # list of StepResult dicts
     final_answer: str
-    error: str
 
 
 # ---------------------------------------------------------------------------
@@ -91,17 +85,6 @@ def _extract_ai_content(msgs: list) -> str:
 
 def _count_tool_messages(msgs: list) -> int:
     return sum(1 for msg in msgs if isinstance(msg, ToolMessage))
-
-
-def _detect_empty_results(msgs: list) -> int:
-    """Count how many tool results were empty/trivial."""
-    count = 0
-    for msg in msgs:
-        if isinstance(msg, ToolMessage):
-            content = msg.content if isinstance(msg.content, str) else str(msg.content)
-            if not content.strip() or content.strip() in ("[]", "{}", "null", "None", "No results"):
-                count += 1
-    return count
 
 
 def _step_looks_unsuccessful(step_result: dict) -> bool:
@@ -137,8 +120,6 @@ class ResearchGraphBuilder:
         Tool names available during execution. None = all tools.
     step_timeout_s : int
         Default per-step timeout in seconds.
-    max_interventions : int
-        Max nudges per step before skipping.
     max_step_tool_calls : int
         Max tool calls within a single plan step.
     max_replans : int
@@ -152,7 +133,6 @@ class ResearchGraphBuilder:
         retrieve_tool_names: Optional[List[str]] = None,
         execute_tool_names: Optional[List[str]] = None,
         step_timeout_s: int = 45,
-        max_interventions: int = 2,
         max_step_tool_calls: int = 10,
         max_replans: int = 2,
     ):
@@ -161,7 +141,6 @@ class ResearchGraphBuilder:
         self.retrieve_tool_names = retrieve_tool_names or ["search_sparql_docs"]
         self.execute_tool_names = execute_tool_names  # None = all
         self.step_timeout_s = step_timeout_s
-        self.max_interventions = max_interventions
         self.max_step_tool_calls = max_step_tool_calls
         self.max_replans = max_replans
 
@@ -253,11 +232,6 @@ class ResearchGraphBuilder:
             "current_step_index": 0,
             "replan_count": 0,
             "step_start_time": time.time(),
-            "step_tool_calls": 0,
-            "consecutive_empty_results": 0,
-            "same_tool_repeat_count": 0,
-            "last_tool_name": "",
-            "intervention_count": 0,
             "step_results": [],
         }
 
@@ -314,7 +288,6 @@ class ResearchGraphBuilder:
             "plan": merged_plan,
             "replan_count": replan_count,
             "step_start_time": time.time(),
-            "intervention_count": 0,
         }
 
     def _parse_plan(self, plan_text: str) -> list:
@@ -323,7 +296,7 @@ class ResearchGraphBuilder:
         # Strip markdown fences if present
         if text.startswith("```"):
             lines = text.split("\n")
-            lines = [l for l in lines if not l.strip().startswith("```")]
+            lines = [line for line in lines if not line.strip().startswith("```")]
             text = "\n".join(lines).strip()
 
         try:
@@ -449,10 +422,6 @@ class ResearchGraphBuilder:
                 "step_results": state.get("step_results", []) + [step_result.model_dump()],
                 "current_step_index": step_index + 1,
                 "step_start_time": time.time(),
-                "step_tool_calls": 0,
-                "consecutive_empty_results": 0,
-                "same_tool_repeat_count": 0,
-                "intervention_count": 0,
             }
         except Exception as e:
             executor.shutdown(wait=False)
@@ -467,10 +436,6 @@ class ResearchGraphBuilder:
                 "step_results": state.get("step_results", []) + [step_result.model_dump()],
                 "current_step_index": step_index + 1,
                 "step_start_time": time.time(),
-                "step_tool_calls": 0,
-                "consecutive_empty_results": 0,
-                "same_tool_repeat_count": 0,
-                "intervention_count": 0,
             }
         else:
             executor.shutdown(wait=False)
@@ -479,7 +444,6 @@ class ResearchGraphBuilder:
         msgs = result.get("messages", [])
         result_summary = _extract_ai_content(msgs)
         tool_calls_count = _count_tool_messages(msgs)
-        empty_count = _detect_empty_results(msgs)
         elapsed = time.time() - state.get("step_start_time", time.time())
 
         step_result = StepResult(
@@ -492,17 +456,13 @@ class ResearchGraphBuilder:
 
         logger.info(
             f"[GRAPH:EXECUTE] Step {step_index} done in {elapsed:.1f}s "
-            f"({tool_calls_count} tool calls, {empty_count} empty results)"
+            f"({tool_calls_count} tool calls)"
         )
 
         return {
             "step_results": state.get("step_results", []) + [step_result.model_dump()],
             "current_step_index": step_index + 1,
             "step_start_time": time.time(),
-            "step_tool_calls": 0,
-            "consecutive_empty_results": empty_count,
-            "same_tool_repeat_count": 0,
-            "intervention_count": 0,
         }
 
     # ------------------------------------------------------------------
@@ -637,7 +597,6 @@ def create_research_graph(
     retrieve_tool_names: Optional[List[str]] = None,
     execute_tool_names: Optional[List[str]] = None,
     step_timeout_s: int = 45,
-    max_interventions: int = 2,
     max_step_tool_calls: int = 10,
     max_replans: int = 2,
 ):
@@ -653,7 +612,6 @@ def create_research_graph(
         retrieve_tool_names=retrieve_tool_names,
         execute_tool_names=execute_tool_names,
         step_timeout_s=step_timeout_s,
-        max_interventions=max_interventions,
         max_step_tool_calls=max_step_tool_calls,
         max_replans=max_replans,
     )

@@ -1,23 +1,16 @@
 import argparse
-import json
-import logging
 import asyncio
-import warnings
-
-# Aggressively suppress warnings
-warnings.simplefilter("ignore")
+import json
+from typing import Optional
 
 from fastmcp import FastMCP, settings as mcp_settings
 
 from src.config import settings, endpoints
 from src.knowledge_base import get_knowledge_base
-from src.utils.utils import format_docs, _format_doc
+from src.utils.utils import format_docs
 
 from sparql_llm.utils import get_prefixes_and_schema_for_endpoints
 from sparql_llm.validate_sparql import validate_sparql
-
-from typing_extensions import Required
-from typing import Optional
 
 from src.tools.sparql_search import SparqlClient
 from src.tools.nominatim_search import NominatimGeocoder
@@ -41,7 +34,7 @@ try:
 except Exception as e:
     logger.error(f"Error checking or initializing knowledge base: {e}")
 
-# --- Legacy Tools ---
+# --- Discovery Tools ---
 
 @mcp.tool()
 async def search_location(query: str, city: Optional[str] = "Gent", country: Optional[str] = "BE,DE") -> str:
@@ -198,7 +191,7 @@ async def execute_sparql_query(sparql_query: str, endpoint_url: str) -> str:
             resp_msg += f"Results of SPARQL query execution on {endpoint_url}"
             if len(bindings) > 50:
                 bindings = bindings[:50]
-                resp_msg += f" (showing first 50 results)"
+                resp_msg += " (showing first 50 results)"
             
             # Construct a response object 
             res = {"results": {"bindings": bindings}}

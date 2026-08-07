@@ -49,6 +49,9 @@ WHERE {
 
 
 async def get_embedding(text: str) -> list[float]:
+    if not settings.embedding_api_url:
+        raise ValueError("EMBEDDING_API_URL is required for vector expression search.")
+
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{settings.embedding_api_url}/api/embed",
@@ -57,7 +60,6 @@ async def get_embedding(text: str) -> list[float]:
             timeout=settings.request_timeout,
         )
         response.raise_for_status()
-        print(f"Embedding response: {response}")
         embeddings = response.json().get("embeddings", [[]])
         return embeddings[0] if embeddings else []
     
@@ -89,8 +91,12 @@ async def search_expressions(
     """
     if not vector and not keyword:
         raise ValueError("At least one of 'vector' or 'keyword' must be truthy.")
+    if not 1 <= top_n <= 20:
+        raise ValueError("top_n must be between 1 and 20.")
 
-    keyword_fields = [f.strip() for f in settings.elastic_search_keyword_fields.split(",")]
+    keyword_fields = [f.strip() for f in settings.elastic_search_keyword_fields.split(",") if f.strip()]
+    if keyword and not keyword_fields:
+        raise ValueError("ELASTIC_SEARCH_KEYWORD_FIELDS must define at least one field.")
 
     bool_query: dict = {}
 

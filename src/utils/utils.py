@@ -1,7 +1,8 @@
 from qdrant_client.models import ScoredPoint
 from helpers import logger
 from src.config import settings
-from src.agent import Agent, AgentConfig
+from src.agent import Agent
+from src.agent_helpers.models import AgentConfig
 
 def format_docs(docs: list[ScoredPoint]) -> str:
     """Format a list of documents."""
@@ -37,13 +38,17 @@ def initialize_agent() -> Agent:
         api_key=api_key,
         endpoint=endpoint, # Can be None for Mistral
         model=model,
+        temperature=settings.temperature,
         verbose=settings.verbose,
-        tracing_enabled=settings.tracing_enabled,
-        enabled_tools=settings.enabled_tools,
+        agent_enabled_tools=settings.agent_enabled_tools,
+        llm_max_retries=settings.llm_max_retries,
         llm_request_timeout=settings.llm_request_timeout,
         research_timeout=settings.research_timeout,
-        research_recursion_limit=settings.research_recursion_limit,
-        streaming_enabled=settings.streaming_enabled,
+        retrieve_tools=settings.research_retrieve_tools,
+        execute_tools=settings.research_execute_tools,
+        step_timeout_s=settings.research_step_timeout_s,
+        max_step_tool_calls=settings.research_max_step_tool_calls,
+        max_replans=settings.research_max_replans,
     )
     agent_instance = Agent(agent_conf)
     logger.info("Agent initialized successfully")

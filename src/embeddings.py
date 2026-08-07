@@ -6,8 +6,6 @@ try:
 except ImportError:
     OllamaEmbeddings = None
 
-from helpers import logger
-
 class EmbeddingModel:
     def __init__(self, model_name: str, provider: str = "fastembed", base_url: str = None, **kwargs):
         self.provider = provider

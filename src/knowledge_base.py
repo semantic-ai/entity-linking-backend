@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 import math
 import time
-import logging
 from pathlib import Path
 from typing import List, Any
 from langchain_core.documents import Document
@@ -216,8 +215,6 @@ class SimpleKnowledgeBase(KnowledgeBase):
         parts = []
 
         for endpoint in endpoints:
-            endpoint_url = endpoint.get("endpoint_url", "")
-
             # Load SHACL shapes from folder
             if endpoint.get("shapes_folder"):
                 folder = Path(endpoint["shapes_folder"])
@@ -414,7 +411,8 @@ class LocalEmbeddingKnowledgeBase(KnowledgeBase):
             dot = sum(a*b for a,b in zip(v1, v2))
             mag1 = math.sqrt(sum(a*a for a in v1))
             mag2 = math.sqrt(sum(b*b for b in v2))
-            if mag1 == 0 or mag2 == 0: return 0.0
+            if mag1 == 0 or mag2 == 0:
+                return 0.0
             return dot / (mag1 * mag2)
 
         class MockScoredPoint:
@@ -433,11 +431,13 @@ class LocalEmbeddingKnowledgeBase(KnowledgeBase):
             # 1. Example queries
             added = 0
             for score, doc in scores:
-                if added >= settings.default_number_of_retrieved_docs: break
+                if added >= settings.default_number_of_retrieved_docs:
+                    break
                 if doc.metadata.get("doc_type") == "SPARQL endpoints query examples":
                     ans = doc.metadata.get("answer")
                     if ans not in seen_answers:
-                        if ans: seen_answers.add(ans)
+                        if ans:
+                            seen_answers.add(ans)
                         results.append(MockScoredPoint(
                             payload={"page_content": doc.page_content, "metadata": doc.metadata}, 
                             score=score
@@ -447,11 +447,13 @@ class LocalEmbeddingKnowledgeBase(KnowledgeBase):
             # 2. Others
             added = 0
             for score, doc in scores:
-                if added >= settings.default_number_of_retrieved_docs: break
+                if added >= settings.default_number_of_retrieved_docs:
+                    break
                 if doc.metadata.get("doc_type") != "SPARQL endpoints query examples":
                     ans = doc.metadata.get("answer")
                     if ans not in seen_answers:
-                        if ans: seen_answers.add(ans)
+                        if ans:
+                            seen_answers.add(ans)
                         results.append(MockScoredPoint(
                             payload={"page_content": doc.page_content, "metadata": doc.metadata}, 
                             score=score

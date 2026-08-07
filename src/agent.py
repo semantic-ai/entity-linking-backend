@@ -1,11 +1,7 @@
 """Core Agent class — orchestrates LLM, MCP tools, and research workflows.
 
-Delegates to extracted modules:
-- src.models        — AgentConfig, SparqlResponse, ResearchResponse
-- src.mcp_tools     — MCP-to-LangChain tool conversion
-- src.serialization — message tracing, serialization, tool extraction
-- src.prompts       — system prompts
-- src.logging_callbacks — AgentStepLogger
+The Agent loads the configured MCP tools and exposes synchronous and streaming
+entry points for the LangGraph research workflow.
 """
 
 import asyncio
@@ -17,15 +13,11 @@ from fastmcp import Client
 from langchain_openai import ChatOpenAI
 from langchain_mistralai import ChatMistralAI
 from langchain_ollama import ChatOllama
-from langchain.agents import create_agent
-from langchain_core.messages import AIMessage
 
 from helpers import logger
 from src.agent_helpers.mcp_tools import create_mcp_tool
-from src.agent_helpers.models import AgentConfig, SparqlResponse, ResearchResponse
-from src.agent_helpers.serialization import json_safe, trace_messages, serialize_agent_message, extract_tool_calls, extract_tool_results
-from src.agent_helpers.prompts import RESEARCH_SYSTEM_PROMPT
-from src.agent_helpers.logging_callbacks import AgentStepLogger
+from src.agent_helpers.models import AgentConfig, ResearchResponse
+from src.agent_helpers.serialization import json_safe
 
 
 # ---------------------------------------------------------------------------
@@ -51,14 +43,8 @@ def _build_initial_graph_state(query: str, messages: List[Dict[str, str]]) -> Di
         "current_step_index": 0,
         "replan_count": 0,
         "step_start_time": 0.0,
-        "step_tool_calls": 0,
-        "consecutive_empty_results": 0,
-        "same_tool_repeat_count": 0,
-        "last_tool_name": "",
-        "intervention_count": 0,
         "step_results": [],
         "final_answer": "",
-        "error": "",
     }
 
 
@@ -78,16 +64,6 @@ def _sanitize_messages(query: str, messages: Optional[List[Dict[str, Any]]] = No
         sanitized.append({"role": "user", "content": query})
 
     return sanitized
-
-
-def _extract_final_answer(messages: list) -> str:
-    """Walk messages in reverse to find the last non-empty AI response."""
-    for msg in reversed(messages):
-        if isinstance(msg, AIMessage):
-            content = msg.content if isinstance(msg.content, str) else str(msg.content)
-            if content.strip():
-                return content
-    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +104,7 @@ class Agent:
                 api_key=self.config.api_key,
                 base_url=self.config.endpoint,
                 temperature=self.config.temperature,
+                max_retries=self.config.llm_max_retries,
                 request_timeout=self.config.llm_request_timeout,
             )
 
@@ -135,7 +112,7 @@ class Agent:
     # -- Initialization --
 
     def initialize(self):
-        """Connect to MCP, load tools, and build the default agent."""
+        """Connect to MCP and load the tools available to the research graph."""
         logger.info(f"Connecting to MCP at {self.config.mcp_server_url}")
 
         async def _list_tools():
@@ -145,29 +122,20 @@ class Agent:
         tools_info = asyncio.run(_list_tools())
         logger.info(f"Found {len(tools_info)} tools")
 
-        if self.config.enabled_tools is not None:
-            tools_info = [t for t in tools_info if t.name in self.config.enabled_tools]
+        if self.config.agent_enabled_tools is not None:
+            tools_info = [t for t in tools_info if t.name in self.config.agent_enabled_tools]
             logger.info(f"Filtered to {len(tools_info)} tools: {[t.name for t in tools_info]}")
 
         self.lc_tools = [create_mcp_tool(t, self.mcp_client, verbose=self.config.verbose) for t in tools_info]
-        self.cached_tools = {t.name: t for t in self.lc_tools}
-        self.agent = create_agent(self.llm, tools=self.lc_tools, response_format=SparqlResponse)
         logger.info("Agent initialized successfully")
         
     def _ensure_initialized(self):
-        if not hasattr(self, "cached_tools"):
+        if not hasattr(self, "lc_tools"):
             self.initialize()
 
     def get_tools(self):
         """Return the list of LangChain tools available to the agent."""
         self._ensure_initialized()
-        return self.lc_tools
-
-    def _select_tools(self, names: Optional[List[str]] = None):
-        """Return a tool list — filtered by *names* if given, else all."""
-        self._ensure_initialized()
-        if names is not None:
-            return [self.cached_tools[n] for n in names if n in self.cached_tools]
         return self.lc_tools
 
     # -- Research graph factory (lazy import) --
@@ -180,7 +148,6 @@ class Agent:
             retrieve_tool_names=self.config.retrieve_tools,
             execute_tool_names=self.config.execute_tools,
             step_timeout_s=self.config.step_timeout_s,
-            max_interventions=self.config.max_interventions_per_step,
             max_step_tool_calls=self.config.max_step_tool_calls,
             max_replans=self.config.max_replans,
         )
@@ -194,81 +161,8 @@ class Agent:
         query: str,
         messages: Optional[List[Dict[str, Any]]] = None,
     ) -> ResearchResponse:
-        """Public entry point — delegates to graph or flat agent based on config."""
-        if self.config.planning_enabled:
-            if self.config.streaming_enabled:
-                return self.stream_research_request(query, messages=messages)
-            else:
-                return self._run_research_graph(query, messages=messages)
-        else:
-            return self._run_research_flat(query, messages=messages)
-
-    def _run_research_flat(
-        self,
-        query: str,
-        specific_tools: Optional[List[str]] = None,
-        messages: Optional[List[Dict[str, Any]]] = None,
-    ) -> ResearchResponse:
-        """Run a free-form research query using a flat ReAct agent (no planning)."""
-        tools_to_use = self._select_tools(specific_tools)
-        if not tools_to_use:
-            logger.warning("No tools available for this request.")
-        logger.info(f"[RESEARCH] Tools used: {[t.name for t in tools_to_use]}")
-
-        temp_agent = create_agent(self.llm, tools=tools_to_use, system_prompt=RESEARCH_SYSTEM_PROMPT)
-        step_logger = AgentStepLogger()
-        input_messages = _sanitize_messages(query, messages)
-
-        try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(
-                    temp_agent.invoke,
-                    {"messages": input_messages},
-                    {"recursion_limit": self.config.research_recursion_limit, "callbacks": [step_logger]},
-                )
-                try:
-                    result = future.result(timeout=self.config.research_timeout)
-                except concurrent.futures.TimeoutError:
-                    logger.error(f"[RESEARCH] Agent timed out after {self.config.research_timeout}s")
-                    raise HTTPException(
-                        status_code=504,
-                        detail=f"Research request timed out after {self.config.research_timeout} seconds.",
-                    )
-
-            result_messages = result.get("messages", []) if isinstance(result, dict) else []
-            trace = trace_messages(result_messages, self.config.tracing_enabled) if result_messages else None
-            serialized = [serialize_agent_message(m, i) for i, m in enumerate(result_messages, 1)]
-            tool_calls_list = extract_tool_calls(serialized)
-            tool_results_list = extract_tool_results(serialized)
-
-            answer = _extract_final_answer(result_messages)
-
-            # Backwards-compatible sparql_results from tool output
-            sparql_results = [
-                {"tool": r.get("tool", "unknown"), "tool_call_id": r.get("tool_call_id"), "result": r.get("content", "")}
-                for r in tool_results_list
-            ] or None
-
-            raw_response = None
-            if isinstance(result, dict):
-                extra = {k: json_safe(v) for k, v in result.items() if k != "messages"}
-                raw_response = extra or None
-
-            return ResearchResponse(
-                answer=answer,
-                sources=None,
-                sparql_results=sparql_results,
-                messages=serialized or None,
-                tool_calls=tool_calls_list or None,
-                tool_results=tool_results_list or None,
-                trace=trace,
-                raw_response=raw_response,
-            )
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            _handle_llm_error(e, "research request")
+        """Run the non-streaming plan-execute graph and return one response."""
+        return self._run_research_graph(query, messages=messages)
 
     # -----------------------------------------------------------------------
     # Research requests (plan-execute graph)
