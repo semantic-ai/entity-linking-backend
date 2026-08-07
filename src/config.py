@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from qdrant_client import QdrantClient
 from sparql_llm.utils import SparqlEndpointLinks
 
@@ -11,23 +11,38 @@ NEL_TASK_OPERATION = "http://lblod.data.gift/id/jobs/concept/TaskOperation/named
 
 CONFIG_FILE = Path(os.getenv("CONFIG_FILE", "/config/config.json"))
 
+# Loaded before Settings so the LLM fields below can fall back to it. Also the source of
+# the nested structures (endpoints, entity_class_configs, location_overrides) further down.
+_file_config: dict = {}
+if CONFIG_FILE.exists():
+    try:
+        with CONFIG_FILE.open("r", encoding="utf-8") as _f:
+            _file_config = json.load(_f)
+    except Exception as e:
+        print(f"Error loading config from {CONFIG_FILE}: {e}")
+
+
+def _llm_setting(env_var: str, file_key: str, default=None):
+    """Resolve an LLM setting: config.json, then environment variable, then default.
+
+    Matches the other DECIDe AI services, whose `load_config` validates config.json over
+    a pydantic-settings model: the file wins, and env vars fill in the keys it omits
+    (which is how secrets such as the API key are supplied).
+    """
+    return _file_config.get(file_key) or os.getenv(env_var) or default
+
 
 class Settings(BaseModel):
     """Service configuration. Each field reads its default from an env var with a literal fallback."""
 
     # Agent & API
     mcp_url: str = os.getenv("MCP_SERVER_URL", "http://localhost:80/mcp/sse")
-    llm_provider: str = os.getenv("LLM_PROVIDER", "openai").lower()
 
-    # OpenAI
-    openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
-    openai_endpoint: Optional[str] = os.getenv("OPENAI_ENDPOINT")
-    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1")
-
-    # Mistral
-    mistral_api_key: Optional[str] = os.getenv("MISTRAL_API_KEY")
-    mistral_model: str = os.getenv("MISTRAL_MODEL", "ministral-14b-2512")
-    mistral_endpoint: Optional[str] = os.getenv("MISTRAL_ENDPOINT")
+    # LLM - configurable via config.json or env var (config.json wins)
+    llm_provider: str = _llm_setting("LLM_PROVIDER", "llm_provider", "mistralai").lower()
+    llm_model: str = _llm_setting("LLM_MODEL", "llm_model", "ministral-14b-2512")
+    llm_api_key: Optional[str] = _llm_setting("LLM_API_KEY", "llm_api_key")
+    llm_base_url: Optional[str] = _llm_setting("LLM_BASE_URL", "llm_base_url")
 
     # Vector DB & embeddings
     vector_store_type: str = os.getenv("VECTOR_STORE_TYPE", "memory_embedding")
@@ -40,7 +55,6 @@ class Settings(BaseModel):
     search_endpoint: str = os.getenv("SEARCH_ENDPOINT", "http://search")
 
     ollama_host: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    ollama_model: str = os.getenv("OLLAMA_MODEL", "mistral-nemo")
 
     qdrant_host: str = os.getenv("QDRANT_HOST", "localhost")
     qdrant_port: int = int(os.getenv("QDRANT_PORT", "6333"))
@@ -75,26 +89,18 @@ class Settings(BaseModel):
     )
     resource_base: str = os.getenv("RESOURCE_BASE", "http://data.lblod.info/id/")
 
-    def get_llm_config(self):
-        """Return (api_key, endpoint, model) for the configured LLM provider."""
-        if self.llm_provider == "mistral":
-            return self.mistral_api_key, self.mistral_endpoint, self.mistral_model
-        elif self.llm_provider == "ollama":
-            return None, self.ollama_host, self.ollama_model
-        return self.openai_api_key, self.openai_endpoint, self.openai_model
+    @model_validator(mode="after")
+    def _default_ollama_llm_host(self):
+        """Use OLLAMA_HOST as the LLM host for a local Ollama LLM. OLLAMA_HOST also configures the embedding client, so it
+        only applies when Ollama is in fact the LLM. ChatOllama would fall back to its own
+        localhost default, which inside a container is the container itself.
+        """
+        if self.llm_provider == "ollama" and not self.llm_base_url:
+            self.llm_base_url = self.ollama_host
+        return self
 
 
 settings = Settings()
-
-
-# Nested structures (endpoints, entity_class_configs) come from the JSON config file.
-_file_config: dict = {}
-if CONFIG_FILE.exists():
-    try:
-        with CONFIG_FILE.open("r", encoding="utf-8") as _f:
-            _file_config = json.load(_f)
-    except Exception as e:
-        print(f"Error loading config from {CONFIG_FILE}: {e}")
 
 
 endpoints: List[SparqlEndpointLinks] = []

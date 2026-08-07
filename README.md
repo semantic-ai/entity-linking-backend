@@ -23,7 +23,7 @@ entity-linking-backend/
 - **SPARQL Integration**: Tools to generate and execute SPARQL queries against configured endpoints.
 - **Knowledge Base**: Uses Qdrant and FastEmbed/Ollama for semantic search over documentation and examples. (can be used without Qdrant in memory)
 - **Location Search**: Integration with Nominatim for geocoding.
-- **Multiple LLM Support**: Configurable to use OpenAI, Mistral, or Ollama.
+- **Multiple LLM Support**: Configurable to use Mistral AI or Ollama.
 
 ## Available Tools
 
@@ -49,8 +49,11 @@ The following tools are available via the MCP server:
 ## Configuration
 
 The application is configured via environment variables and a `config.json` file. Settings are resolved with the following priority (highest to lowest):
-1. **Environment Variables** (e.g., set in `.env` or Docker environment)
-2. **Config File** (values loaded from the external JSON configuration file `config.json`)
+1. **Config File** (the external JSON configuration file `config.json`, which covers the
+   `llm_*` settings and the nested `endpoints` / `entity_class_configs` /
+   `location_overrides` structures; the other settings are environment-only)
+2. **Environment Variables** (e.g., set in `.env` or Docker environment) - these fill in
+   the keys `config.json` omits, which is how secrets such as `LLM_API_KEY` are supplied
 3. **Default Values**
 
 ### Environment Variables
@@ -58,17 +61,12 @@ The application is configured via environment variables and a `config.json` file
 You can set these directly or via a `.env` file:
 
 ```env
-# LLM Provider (openai, mistral, ollama)
-LLM_PROVIDER=openai
+# LLM (langchain provider name; ollama and mistralai are pre-installed)
+LLM_PROVIDER=mistralai
+LLM_MODEL=ministral-14b-2512
+LLM_API_KEY=your_key_here
+LLM_BASE_URL=            # optional; required for ollama and other self-hosted endpoints
 LLM_MAX_RETRIES=3
-
-# OpenAI Configuration
-OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-4
-
-# Mistral Configuration
-MISTRAL_API_KEY=your_key_here
-MISTRAL_MODEL=mistral-medium
 
 # Services
 QDRANT_HOST=localhost
@@ -83,11 +81,18 @@ ENABLED_TOOLS=search_sparql_docs,execute_sparql_query,search_web,search_location
 
 ### Switching Providers & Local Execution
 
-The application supports multiple LLM providers including OpenAI, Mistral, and Ollama (local).
+LLM calls are routed through LangChain's `init_chat_model`, so the provider is set purely
+by configuration. The image pre-installs the DECIDe approved provider integrations,
+`ollama` (local) and `mistralai` (cloud).
+
+Any other provider LangChain supports will work too: add its `langchain-*` package to
+`requirements.txt` and rebuild the image, with the caveat that you then maintain that
+image yourself.
 
 **Local Execution with Ollama:**
 You can run the agent locally using Ollama. This is useful for privacy or cost reasons.
-To use Ollama, set `LLM_PROVIDER=ollama` and configure the endpoints and models in the env.
+Set `LLM_PROVIDER=ollama`, `LLM_MODEL` to the model, and `LLM_BASE_URL` to your Ollama
+host (e.g. `http://ollama:11434`).
 
 Testing using following local models:
 - **Mistral Nemo**: Decent performance depending on the type of query (not too complex), functional tool-calling.
