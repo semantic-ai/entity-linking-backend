@@ -1,8 +1,8 @@
 sparql-llm==0.1.2
 langchain==1.2.3
+# DECIDe approved LLM providers
 langchain-mistralai==1.1.1
 langchain-ollama==1.0.1
-langchain-openai==1.1.7
 langgraph==1.0.10
 langgraph-prebuilt==1.0.8
 qdrant-client==1.16.2

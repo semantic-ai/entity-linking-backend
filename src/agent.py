@@ -5,9 +5,7 @@ from click import prompt
 from fastapi import HTTPException
 from fastmcp import Client
 from langchain_core.tools import StructuredTool
-from langchain_openai import ChatOpenAI
-from langchain_mistralai import ChatMistralAI
-from langchain_ollama import ChatOllama
+from langchain.chat_models import init_chat_model
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field, create_model
@@ -133,10 +131,10 @@ class SparqlResponse(BaseModel):
 
 class AgentConfig(BaseModel):
     mcp_server_url: str
-    provider: str = "openai"  # or "mistral"
+    provider: str = "mistralai"  # any provider LangChain can resolve, ollama and mistrail supported by defaut
     api_key: Optional[str] = None # Not needed for Ollama
     endpoint: Optional[str] = None # Can be None for Mistral
-    model: str = "gpt-4.1" 
+    model: str = "ministral-14b-2512"
     temperature: float = 0.0
     verbose: bool = False
     enabled_tools: Optional[List[str]] = None
@@ -150,31 +148,19 @@ class Agent:
         self.config = config
         self.mcp_client = Client(config.mcp_server_url)
         
-        # Initialize LLM
-        if self.config.provider.lower() == "mistral":
-            kwargs = {
-                "model": self.config.model,
-                "api_key": self.config.api_key,
-                "temperature": self.config.temperature,
-                "max_retries": self.config.llm_max_retries
-            }
-            if self.config.endpoint:
-                kwargs["base_url"] = self.config.endpoint
-                
-            self.llm = ChatMistralAI(**kwargs)
-        elif self.config.provider.lower() == "ollama":
-            self.llm = ChatOllama(
-                model=self.config.model,
-                base_url=self.config.endpoint, # Maps to ollama_url
-                temperature=self.config.temperature
-            )
-        else:   
-            self.llm = ChatOpenAI(
-                model=self.config.model,
-                api_key=self.config.api_key,
-                base_url=self.config.endpoint,
-                temperature=self.config.temperature
-            )
+        # Initialize LLM. init_chat_model resolves the provider against the installed
+        # langchain-<provider> package, so switching provider is configuration only.
+        kwargs: Dict[str, Any] = {
+            "model_provider": self.config.provider,
+            "temperature": self.config.temperature,
+            "max_retries": self.config.llm_max_retries,
+        }
+        if self.config.api_key:
+            kwargs["api_key"] = self.config.api_key
+        if self.config.endpoint:
+            kwargs["base_url"] = self.config.endpoint
+
+        self.llm = init_chat_model(self.config.model, **kwargs)
 
     def get_tools(self):
         """Returns the list of tools available to the agent."""

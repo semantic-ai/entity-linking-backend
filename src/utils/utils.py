@@ -29,14 +29,13 @@ def _format_doc(doc: ScoredPoint) -> str:
 
 def initialize_agent() -> Agent:
     # Initialize Agent
-    api_key, endpoint, model = settings.get_llm_config()
-    logger.info(f"Initializing Agent with provider={settings.llm_provider}, model={model}, endpoint={endpoint}")
+    logger.info(f"Initializing Agent with provider={settings.llm_provider}, model={settings.llm_model}, endpoint={settings.llm_base_url}")
     agent_conf = AgentConfig(
         mcp_server_url=settings.mcp_url,
         provider=settings.llm_provider,
-        api_key=api_key,
-        endpoint=endpoint, # Can be None for Mistral
-        model=model,
+        api_key=settings.llm_api_key,
+        endpoint=settings.llm_base_url, # Can be None for Mistral
+        model=settings.llm_model,
         verbose=True,
         enabled_tools=settings.enabled_tools,
         entity_class_configs=entity_class_configs

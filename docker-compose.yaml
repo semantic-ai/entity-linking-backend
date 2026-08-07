@@ -24,9 +24,9 @@ services:
       MCP_SERVER_URL: "http://localhost:80/mcp/sse"
       JOB_GRAPH: "http://mu.semte.ch/graphs/harvesting"
       AI_GRAPH: "http://mu.semte.ch/graphs/public/pdf"
-      LLM_PROVIDER: "mistral"
+      LLM_PROVIDER: "mistralai"
       LLM_MAX_RETRIES: 3
-      MISTRAL_MODEL: "ministral-14b-2512"
+      LLM_MODEL: "ministral-14b-2512"
       CONFIG_PATH: "/config/config.json"
       COMPOSE_FILE: /tmp/docker-compose.yaml
       COMPOSE_SERVICE: nel-service

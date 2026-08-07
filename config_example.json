@@ -1,7 +1,7 @@
 {
   "mcp_url": "http://localhost:80/mcp/sse",
-  "llm_provider": "openai",
-  "openai_model": "gpt-4.1",
+  "llm_provider": "mistralai",
+  "llm_model": "ministral-14b-2512",
   "vector_store_type": "memory_embedding",
   "endpoints": [
     {
