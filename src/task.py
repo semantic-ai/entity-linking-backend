@@ -226,6 +226,7 @@ class NamedEntityLinkingTask(DecisionTask):
 
         Args:
             resource: String containing an URI of a resource that should be added to the container with the task:hasResource property
+            the resource must exist for the container to be created
 
         Returns:
             String containing the URI of the output data container
@@ -236,12 +237,15 @@ class NamedEntityLinkingTask(DecisionTask):
         q = Template(
             get_prefixes_for_query("task", "nfo", "mu") +
             f"""
-            INSERT DATA {{
+            INSERT {{
             GRAPH $graph {{
                 $container a nfo:DataContainer ;
                     mu:uuid "$uuid" ;
                     task:hasResource $resource .
             }}
+            }}
+            WHERE {{
+                $resource a ?thing .
             }}
             """
         ).substitute(
