@@ -115,6 +115,7 @@ class NamedEntityLinkingAnnotation(RelationExtractionAnnotation):
               GRAPH $ai_graph {
                   $prev_annotation_uri oa:hasTarget ?target .
               }
+              $user <http://www.w3.org/ns/prov#specializationOf> ?modelType .
               FILTER NOT EXISTS {
                 GRAPH $ai_graph {
                   ?existingAnn a oa:Annotation ;
@@ -123,11 +124,12 @@ class NamedEntityLinkingAnnotation(RelationExtractionAnnotation):
                       oa:hasTarget ?target .
 
                   ?existingAct a prov:Activity ;
-                      prov:generated ?existingAnn ;
-                      prov:wasAssociatedWith $user .
+                      prov:generated ?existingAnn .
 
                   $statement_filter
                 }
+                ?existingAct prov:wasAssociatedWith / <http://www.w3.org/ns/prov#specializationOf> ?modelType .
+
               }
             }
             """
