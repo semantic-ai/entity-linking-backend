@@ -157,6 +157,7 @@ class NamedEntityLinkingTask(DecisionTask):
         Retrieve the recognized named entity by bridging the harvesting graph 
         with the actual data graph.
         """
+        # note the union statement in this query. This is because some tasks don't have input containers and simply get their input from the job's shape
         q = Template(
             get_prefixes_for_query("task", "oa", "rdf", "rdfs", "dct", "eli") +
             f"""
@@ -176,8 +177,8 @@ class NamedEntityLinkingTask(DecisionTask):
                     }}
 
                     FILTER NOT EXISTS {{
-                        ?splitter dct:isPartOf ?job .
-                        ?splitter task:operation <http://lblod.data.gift/id/jobs/concept/TaskOperation/annotation-split-tasks> .
+                        $task task:inputContainer ?container .
+                        ?container task:hasResource ?annotation2 .
                     }}
                 }}
                 
