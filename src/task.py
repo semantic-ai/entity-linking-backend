@@ -179,6 +179,7 @@ class NamedEntityLinkingTask(DecisionTask):
                     FILTER NOT EXISTS {{
                         $task task:inputContainer ?container .
                         ?container task:hasResource ?annotation2 .
+                        ?annotation2 a oa:Annotation.
                     }}
                 }}
                 
