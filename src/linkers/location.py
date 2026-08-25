@@ -1,4 +1,3 @@
-import asyncio
 from typing import Optional
 
 from helpers import logger

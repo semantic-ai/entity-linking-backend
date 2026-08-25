@@ -1,37 +1,35 @@
-# Entity Linking Backend MCP Server
+# Entity Linking Backend
 
-This repository contains the backend service for the Entity Linking Service. It exposes a Model Context Protocol (MCP) server that provides tools for querying SPARQL endpoints, searching locations, performing web searches, and utilizing a vector-based knowledge base (for example sparql queries).
+This repository contains the backend service for Named Entity Linking. It resolves recognized named entities (from an upstream NER step) to URIs using deterministic linkers — Nominatim for locations and an Elasticsearch-backed search for organizations.
 
 ## Project Structure
 
 ```
 entity-linking-backend/
-├── config/             # Configuration files
-├── data/               # Data files (metadata, examples, shapes)
-├── src/                # Source code
-│   ├── agent.py        # Agent implementation
-│   ├── api.py          # FastAPI entry point
-│   ├── mcp_server.py   # MCP Server definition
-│   ├── knowledge_base.py # Qdrant knowledge base integration
-│   ├── tools/          # Tool implementations (SPARQL, Nominatim, Web)
-│   └── utils/          # Utility functions
-└── requirements.txt    # Python dependencies
+├── config/             # Configuration files (migrations, virtuoso)
+├── data/               # Data files
+├── src/
+│   ├── api.py          # FastAPI entry point (health, delta endpoint)
+│   ├── config.py       # Service configuration
+│   ├── job.py          # Task queue orchestration
+│   ├── task.py         # Named Entity Linking task processing
+│   ├── nel_annotation.py # RDF annotation builder
+│   ├── linkers/        # Entity linkers
+│   │   ├── base.py     # Abstract base class
+│   │   ├── location.py # Nominatim-based location linker
+│   │   └── organization.py # Elasticsearch-based organization linker
+│   ├── tools/
+│   │   └── nominatim_search.py # Nominatim HTTP client
+│   └── utils/
+│       └── nominatim_parser.py # Nominatim result → RDF triples
+└── requirements.txt
 ```
 
 ## Features
 
-- **SPARQL Integration**: Tools to generate and execute SPARQL queries against configured endpoints.
-- **Knowledge Base**: Uses Qdrant and FastEmbed/Ollama for semantic search over documentation and examples. (can be used without Qdrant in memory)
-- **Location Search**: Integration with Nominatim for geocoding.
-- **Multiple LLM Support**: Configurable to use Mistral AI or Ollama.
-
-## Available Tools
-
-The following tools are available via the MCP server:
-
-- **search_location**: Search for a location (entity linking) based on a query, city, and country. Returns the nominatim reponse.
-- **search_sparql_docs**: Assist the agent in writing SPARQL queries to access resources by retrieving relevant examples and classes schema.
-- **execute_sparql_query**: Execute a SPARQL query against a SPARQL endpoint.
+- **Location Linking**: Deterministic resolution via Nominatim geocoding with configurable overrides for pilot cities.
+- **Organization Linking**: Resolution via Elasticsearch vector search on organization names filtered by governing unit.
+- **Task Processing**: Delta-driven task queue that processes NER annotations and produces NEL annotations with provenance.
 
 ## Prerequisites
 
@@ -48,152 +46,72 @@ The following tools are available via the MCP server:
 
 ## Configuration
 
-The application is configured via environment variables and a `config.json` file. Settings are resolved with the following priority (highest to lowest):
-1. **Config File** (the external JSON configuration file `config.json`, which covers the
-   `llm_*` settings and the nested `endpoints` / `entity_class_configs` /
-   `location_overrides` structures; the other settings are environment-only)
-2. **Environment Variables** (e.g., set in `.env` or Docker environment) - these fill in
-   the keys `config.json` omits, which is how secrets such as `LLM_API_KEY` are supplied
-3. **Default Values**
+The application is configured via environment variables and a `config.json` file.
 
 ### Environment Variables
 
 You can set these directly or via a `.env` file:
 
 ```env
-# LLM (langchain provider name; ollama and mistralai are pre-installed)
-LLM_PROVIDER=mistralai
-LLM_MODEL=ministral-14b-2512
-LLM_API_KEY=your_key_here
-LLM_BASE_URL=            # optional; required for ollama and other self-hosted endpoints
-LLM_MAX_RETRIES=3
-
 # Services
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
 NOMINATIM_ENDPOINT=http://localhost:8080/
-OLLAMA_HOST=http://localhost:11434
+SEARCH_ENDPOINT=http://search
+MU_SPARQL_ENDPOINT=http://virtuoso:8890/sparql
 
-# MCP Configuration
-MCP_SERVER_URL=http://localhost:80/mcp/sse
-ENABLED_TOOLS=search_sparql_docs,execute_sparql_query,search_web,search_location
+# Retry configuration
+MAX_RETRIES=3
 ```
 
-### Switching Providers & Local Execution
+### External Config File (`config.json`)
 
-LLM calls are routed through LangChain's `init_chat_model`, so the provider is set purely
-by configuration. The image pre-installs the DECIDe approved provider integrations,
-`ollama` (local) and `mistralai` (cloud).
+The `config.json` file is used for `location_overrides` — static mappings that bypass Nominatim for known pilot-city entities. Use `config_example.json` as a template.
 
-Any other provider LangChain supports will work too: add its `langchain-*` package to
-`requirements.txt` and rebuild the image, with the caveat that you then maintain that
-image yourself.
+### Docker Volumes for Configuration
 
-**Local Execution with Ollama:**
-You can run the agent locally using Ollama. This is useful for privacy or cost reasons.
-Set `LLM_PROVIDER=ollama`, `LLM_MODEL` to the model, and `LLM_BASE_URL` to your Ollama
-host (e.g. `http://ollama:11434`).
-
-Testing using following local models:
-- **Mistral Nemo**: Decent performance depending on the type of query (not too complex), functional tool-calling.
-- **Ministral-3:14b (instruct)**:  Issue with tool-calling via ollama, running via Mistral API achieves best results.
-
-### External Config File (`config.json`) and Tool Selection
-
-To deploy with external configuration and data, you can mount a `config.json` file. Use `config_example.json` as a template.
-
-When using smaller local models (like 7B or 12B parameter models), it is highly recommended to **limit the number of enabled tools**. Smaller models can struggle with reasoning when presented with too many tools or irrelevant context.
-
-You can set a base constraint via the `ENABLED_TOOLS` environment variable (as shown above), and you can finely control **which tools and specific query templates** are used dynamically per `entity_class` during structured requests (`/agent/query_structured`). This mapping is done through the `config.json` file.
-
-If this configuration is provided, the backend will JIT (Just-In-Time) spawn a lightweight router-agent with exactly the sub-selection of tools mapped for that specific task:
-
-**Example `config.json` integration:**
-
-```json
-{
-  "entity_class_configs": {
-    "administrative_body": {
-      "tools": ["search_sparql_docs", "execute_sparql_query"],
-      "query_template": "Write a SPARQL query to find the URI of the {classification_class} {entity_label} in region {location}, execute it and return the results.\nKeep iterating until you find the best possible match. Provide reasoning for your selection."
-    },
-    "location": {
-      "tools": ["search_location"],
-      "query_template": "Search for the {classification_class} {entity_label} in region {location}. Return the best matching URI.\nProvide reasoning for your selection."
-    }
-  }
-}
-```
-
-### Docker Volumes for Configuration and Data
-
-1.  **External Config**: Create a directory (e.g., `config/entitylinking`) and place your `config.json` file inside it. Use `config_example.json` as a template.
-2.  **External Data**: Prepare your data directory. If you mount it to `/app/data`, it will replace the built-in data.
-3.  **Run with Docker**: Mount the config directory to `/config` and the data directory to `/app/data`.
+1.  **External Config**: Create a directory (e.g., `config/entitylinking`) and place your `config.json` file inside it.
+2.  **Run with Docker**: Mount the config directory to `/config`.
 
 In your `docker-compose.yml`, you can add:
 
 ```yaml
     volumes:
       - ./config/entitylinking:/config
-      - ./data:/app/data
 ```
 
 ## Usage
 
-### Running Locally (HTTP API)
-
-To run the HTTP server which exposes the MCP SSE endpoint:
+### Running Locally
 
 ```bash
-python -m src.api
+python -m uvicorn web:app --host 0.0.0.0 --port 80
 ```
-
-The server will start on `http://0.0.0.0:80`. The MCP SSE endpoint is available at `/mcp/sse`.
  
 ## Docker Compose Example
 
-A minimal `docker-compose.yml` for running the service alongside Qdrant, Nominatim and Ollama:
+A minimal `docker-compose.yml` for running the service with Nominatim:
 
 ```yaml
-version: '3.8'
-
 services:
-    decide-mcp:
+    nel-service:
         build: .
         volumes:
             - ./:/app
+            - ./config.json:/config/config.json:ro
         ports:
             - "80:80"
-        env_file:
-            - .env
         environment:
-            - QDRANT_HOST=qdrant
-            - QDRANT_PORT=6333
-            - OLLAMA_HOST=http://ollama:11434
             - NOMINATIM_ENDPOINT=http://nominatim:8080/
-            - MCP_SERVER_URL=http://localhost:80/mcp/sse
-            - ENABLED_TOOLS=search_sparql_docs,execute_sparql_query
-            - ...
+            - MU_SPARQL_ENDPOINT=http://virtuoso:8890/sparql
         depends_on:
-            - qdrant
             - nominatim
-            - ollama
-
-    qdrant:
-        image: qdrant/qdrant
-        ports:
-            - "6333:6333"
 
     nominatim:
         image: mediagis/nominatim:4.2
+        environment:
+            - PBF_URL=https://download.geofabrik.de/europe/belgium-latest.osm.pbf
+        shm_size: '1gb'
         ports:
             - "8080:8080"
-
-    ollama:
-        image: ollama/ollama:latest
-        ports:
-            - "11434:11434"
 ```
 
 Start the stack with:
@@ -295,58 +213,27 @@ via a search on [nominatim.openstreetmap.org](https://nominatim.openstreetmap.or
 
 ## API Endpoints
 
-This service exposes a small HTTP API (FastAPI). Two commonly used endpoints are shown below.
-
-- **Health check — GET /**
-
-    Request:
+- **Health check — `GET /`**
 
     ```bash
     curl -s http://localhost/ | jq
     ```
 
-    Example response:
-
     ```json
     {
-        "status": "running",
-        "endpoints": ["/mcp"]
+        "status": "running"
     }
     ```
 
-- **Agent Endpoints**
+- **Delta notification — `POST /delta`**
 
-    For quick testing you can also call the agent HTTP endpoints directly.
-
-    **Free-form Query — `POST /agent/query`**
+    Triggers processing of open named entity linking tasks. Called by the mu-delta-notifier when new tasks appear.
 
     ```bash
-    curl -X POST http://localhost/agent/query \
-        -H "Content-Type: application/json" \
-        -d '{"query": "Return the openstreetmaps URI of location 'Station Gent-Sint-Pieters'. Keep searching untill you find closest match."}'
+    curl -X POST http://localhost/delta \
+      -H "Content-Type: application/json" \
+      -d '[{"inserts": [...], "deletes": []}]'
     ```
-
-    **Structured Query — `POST /agent/query_structured`**
-
-    Target specific entity classes. Currently supported classes include: **Administrative Body**. **Mandatary** is supported but only for Flemish municiplaties, to enable it add or uncomment the "centrale vindplaats" sparql endpoint in the config.
-
-    ```bash
-    curl -X POST http://localhost/agent/query_structured \
-        -H "Content-Type: application/json" \
-        -d '{"entity_class": "Administrative Body", "entity_label": "Vast Bureau", "location": "Gent"}'
-    ```
-
-    - **MCP SSE endpoint — `/mcp/sse`**
-
-    The MCP server is mounted under `/mcp`. To open a Server-Sent Events (SSE) stream use:
-
-    ```bash
-    curl -N -H "Accept: text/event-stream" http://localhost/mcp/sse
-    ```
-
-    The exact event format depends on the MCP client/server interaction. For interactive usage, connect an MCP-capable client (or use the `fastmcp` client) and exchange the MCP messages over the SSE transport.
-
-
 
 ## Run with tasks
 

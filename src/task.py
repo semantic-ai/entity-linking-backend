@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from string import Template
 from typing import TypedDict
 
-from src.config import settings, endpoints
+from src.config import settings
 from escape_helpers import sparql_escape_uri, sparql_escape_string
 from helpers import query, update, logger
 from decide_ai_service_base.sparql_config import (
@@ -286,7 +286,7 @@ class NamedEntityLinkingTask(DecisionTask):
         for input in inputs:
             self.retries = 0
             success = False
-            while not success and self.retries < settings.llm_max_retries:
+            while not success and self.retries < settings.max_retries:
                 self.retries += 1
                 try:
                     logger.info(
@@ -356,13 +356,13 @@ class NamedEntityLinkingTask(DecisionTask):
                     success = True
                 except Exception as e:
                     logger.error(f"Error processing task {self.task_uri}: {e}")
-                    if self.retries >= settings.llm_max_retries:
+                    if self.retries >= settings.max_retries:
                         logger.error(
                             f"Max retries reached for task {self.task_uri}. Failing task."
                         )
                     else:
                         logger.info(
                             f"Retrying task {self.task_uri} "
-                            f"(attempt {self.retries}/{settings.llm_max_retries})"
+                            f"(attempt {self.retries}/{settings.max_retries})"
                         )
                         time.sleep(5)
