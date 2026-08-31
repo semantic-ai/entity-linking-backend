@@ -50,6 +50,7 @@ class NominatimGeocoder:
         }
             
         try:
+            self._throttle()
             with httpx.Client() as client:
                 resp = client.get(f"{self.base_url}/search", params=params, timeout=self.timeout)
                 resp.raise_for_status()
@@ -85,6 +86,7 @@ class NominatimGeocoder:
         }
 
         try:
+            self._throttle()
             with httpx.Client() as client:
                 resp = client.get(f"{self.base_url}/lookup", params=params, timeout=self.timeout)
                 resp.raise_for_status()

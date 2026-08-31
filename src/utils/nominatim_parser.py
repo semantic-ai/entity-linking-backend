@@ -65,7 +65,7 @@ class NominatimParser:
         else:
             addr_tags = addr_info
 
-        print("category:", category, "osm_type_val:", osm_type_val, "addr_tags:", addr_tags)
+        logger.debug("category: %s, osm_type_val: %s, addr_tags: %s", category, osm_type_val, addr_tags)
 
         # Handle different key names for fields
         pc = addr_tags.get("postcode") or data.get("calculated_postcode", "")
