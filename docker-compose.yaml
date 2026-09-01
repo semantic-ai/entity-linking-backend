@@ -19,14 +19,10 @@ services:
       TARGET_GRAPH: "http://mu.semte.ch/graphs/public"
       DEFAULT_GRAPH: "http://mu.semte.ch/graphs/harvesting"
       ALLOW_MU_AUTH_SUDO: "true"
-      OLLAMA_HOST: "http://ollama:11434"
       NOMINATIM_ENDPOINT: "http://nominatim:8080/"
-      MCP_SERVER_URL: "http://localhost:80/mcp/sse"
       JOB_GRAPH: "http://mu.semte.ch/graphs/harvesting"
       AI_GRAPH: "http://mu.semte.ch/graphs/public/pdf"
-      LLM_PROVIDER: "mistralai"
-      LLM_MAX_RETRIES: 3
-      LLM_MODEL: "ministral-14b-2512"
+      MAX_RETRIES: 3
       CONFIG_PATH: "/config/config.json"
       COMPOSE_FILE: /tmp/docker-compose.yaml
       COMPOSE_SERVICE: nel-service

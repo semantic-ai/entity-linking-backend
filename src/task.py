@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from string import Template
 from typing import TypedDict
 
-from src.config import settings, endpoints
+from src.config import settings
 from escape_helpers import sparql_escape_uri, sparql_escape_string
 from helpers import query, update, logger
 from decide_ai_service_base.sparql_config import (
@@ -25,7 +25,9 @@ from src.nel_annotation import NamedEntityLinkingAnnotation
 
 class NamedEntityLinkingTask(DecisionTask):
     """
-    Task that processes annotations from a Named Entity Recognition (NER) service, tries to retrieve their URI using the LLM. The result is the same annotation enriched with a skos:exactMatch to the found URI.
+    Task that processes annotations from a Named Entity Recognition (NER) service
+    and resolves them to URIs via deterministic linkers (search, geocoding).
+    The result is the same annotation enriched with a skos:exactMatch to the found URI.
     """
 
     # @todo integrate in ai service base
@@ -152,7 +154,7 @@ class NamedEntityLinkingTask(DecisionTask):
         return governing_unit_name
     
 
-    def fetch_data_from_input_container(self) -> dict[str, str]:
+    def fetch_data_from_input_container(self) -> list[dict[str, str]] | None:
         """
         Retrieve the recognized named entity by bridging the harvesting graph 
         with the actual data graph.
@@ -199,7 +201,6 @@ class NamedEntityLinkingTask(DecisionTask):
             """
         ).substitute(
             task=sparql_escape_uri(self.task_uri),
-            default_graph=sparql_escape_uri(GRAPHS["jobs"]),
             publication_graph=sparql_escape_uri(GRAPHS["ai"])
         )
 
@@ -217,7 +218,7 @@ class NamedEntityLinkingTask(DecisionTask):
                 "location": b.get("location", {}).get("value", "Unknown location"),
                 "entity": b.get("entity", {}).get("value"),
             }
-            for b in bindings if not "person" in b.get("entityClass", {}).get("value", "").lower() # Excluding mandataries for now
+            for b in bindings if "person" not in b.get("entityClass", {}).get("value", "").lower()
         ]
 
         return results
@@ -242,7 +243,7 @@ class NamedEntityLinkingTask(DecisionTask):
             INSERT {{
             GRAPH $graph {{
                 $container a nfo:DataContainer ;
-                    mu:uuid "$uuid" ;
+                    mu:uuid $uuid ;
                     task:hasResource $resource .
             }}
             }}
@@ -252,7 +253,7 @@ class NamedEntityLinkingTask(DecisionTask):
             """
         ).substitute(
             container=sparql_escape_uri(container_uri),
-            uuid=container_id,
+            uuid=sparql_escape_string(container_id),
             resource=sparql_escape_uri(resource),
             graph=sparql_escape_uri(GRAPHS["jobs"])
         )
@@ -260,16 +261,16 @@ class NamedEntityLinkingTask(DecisionTask):
         update(q, sudo=True)
         return container_uri
 
-    def _resolve_location(self, input: dict) -> str:
-        """Pick the location string for the linker.
+    def _resolve_location(self, input: dict) -> tuple[str, str]:
+        """Return (location_name, location_uri) for the linker.
 
         Falls back to the governing-unit name when the upstream NER step
         did not attach a `dct:spatial` value.
         """
         if input["location"] == "Unknown location":
             governing_unit_uri = self.fetch_governing_unit_uri()
-            return [self.fetch_governing_unit_name(governing_unit_uri), governing_unit_uri]
-        return input["location"]
+            return (self.fetch_governing_unit_name(governing_unit_uri), governing_unit_uri)
+        return (input["location"], input["location"])
 
     def process(self):
         """
@@ -286,7 +287,7 @@ class NamedEntityLinkingTask(DecisionTask):
         for input in inputs:
             self.retries = 0
             success = False
-            while not success and self.retries < settings.llm_max_retries:
+            while not success and self.retries < settings.max_retries:
                 self.retries += 1
                 try:
                     logger.info(
@@ -304,7 +305,7 @@ class NamedEntityLinkingTask(DecisionTask):
                         success = True
                         break
 
-                    [location, location_uri] = self._resolve_location(input)
+                    (location, location_uri) = self._resolve_location(input)
 
                     logger.info(
                         f"Linking {input['entityLabel']!r} ({entity_class}) "
@@ -354,15 +355,18 @@ class NamedEntityLinkingTask(DecisionTask):
                     )
 
                     success = True
+                except (TypeError, KeyError, AttributeError) as e:
+                    logger.error(f"Programming error processing task {self.task_uri}: {e}")
+                    raise
                 except Exception as e:
                     logger.error(f"Error processing task {self.task_uri}: {e}")
-                    if self.retries >= settings.llm_max_retries:
+                    if self.retries >= settings.max_retries:
                         logger.error(
                             f"Max retries reached for task {self.task_uri}. Failing task."
                         )
                     else:
                         logger.info(
                             f"Retrying task {self.task_uri} "
-                            f"(attempt {self.retries}/{settings.llm_max_retries})"
+                            f"(attempt {self.retries}/{settings.max_retries})"
                         )
                         time.sleep(5)

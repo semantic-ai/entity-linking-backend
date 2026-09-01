@@ -4,7 +4,7 @@ from string import Template
 from typing import Optional
 
 from escape_helpers import sparql_escape_uri, sparql_escape_string, sparql_escape_float
-from helpers import update
+from helpers import update, logger
 
 from decide_ai_service_base.annotation.relation_extraction import RelationExtractionAnnotation
 from decide_ai_service_base.sparql_config import get_prefixes_for_query, GRAPHS, SPARQL_PREFIXES
@@ -162,6 +162,6 @@ class NamedEntityLinkingAnnotation(RelationExtractionAnnotation):
                 f"Failed to insert NamedEntityLinkingAnnotation for "
                 f"{self.subject} -> {self.object}: {e}"
             )
-            self.logger.error(error_msg, exc_info=True)
+            logger.error(error_msg, exc_info=True)
             raise RuntimeError(error_msg) from e
         return annotation_uri

@@ -59,8 +59,8 @@ class OrganizationLinker(EntityLinker):
                     extra={"first_org": first_org},
                 )
                 return None
-            extra_triples = None
-            score = first_org.get("score", None)
+            extra_triples = ""
+            score = first_org.get("score")
             if score:
                 extra_triples = f"$annotation_id <http://mu.semte.ch/vocabularies/ext/muSearchScore> {sparql_escape_float(score)} ."
 

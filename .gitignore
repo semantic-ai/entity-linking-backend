@@ -1,7 +1,5 @@
 .env
-/config/__pycache__
-/library/__pycache__
-/tools/__pycache__
+__pycache__/
 *.pyc
 docker-compose.yml
 docker-compose.dev.yml
