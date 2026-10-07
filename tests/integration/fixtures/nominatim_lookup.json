@@ -1,0 +1,21 @@
+[
+  {
+    "osm_type": "W",
+    "osm_id": 123,
+    "category": "highway",
+    "type": "residential",
+    "localname": "Kerkstraat",
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [
+        [3.72, 51.05],
+        [3.73, 51.06]
+      ]
+    },
+    "address": {
+      "road": "Kerkstraat",
+      "city": "Gent",
+      "postcode": "9000"
+    }
+  }
+]

@@ -1,0 +1,43 @@
+@prefix adms: <http://www.w3.org/ns/adms#> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix mu:   <http://mu.semte.ch/vocabularies/core/> .
+@prefix oa:   <http://www.w3.org/ns/oa#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix task: <http://redpencil.data.gift/vocabularies/tasks/> .
+
+<http://example.org/test/task/link-override>
+    a task:Task ;
+    mu:uuid "test-task-link-override" ;
+    adms:status <http://redpencil.data.gift/id/concept/JobStatus/scheduled> ;
+    task:operation <http://lblod.data.gift/id/jobs/concept/TaskOperation/named-entity-linking> ;
+    dct:isPartOf <http://example.org/test/job/link-override> ;
+    task:inputContainer <http://example.org/test/container/link-override> .
+
+<http://example.org/test/container/link-override>
+    task:hasResource <http://example.org/test/annotation/link-override> .
+
+<http://example.org/test/task/link-override-first>
+    a task:Task ;
+    dct:isPartOf <http://example.org/test/job/link-override> ;
+    task:index "0" ;
+    task:inputContainer <http://example.org/test/container/link-override-first> .
+
+<http://example.org/test/container/link-override-first>
+    task:hasResource <http://example.org/test/governing-unit/gent> .
+
+<http://example.org/test/governing-unit/gent>
+    skos:prefLabel "Gent" .
+
+<http://example.org/test/annotation/link-override>
+    oa:motivatedBy oa:linking ;
+    oa:hasBody <http://example.org/test/statement/link-override> ;
+    oa:hasTarget <http://example.org/test/target/link-override> .
+
+<http://example.org/test/statement/link-override>
+    rdf:object <http://example.org/test/entity/link-override> .
+
+<http://example.org/test/entity/link-override>
+    a dct:Location ;
+    rdfs:label "Freiburg" .

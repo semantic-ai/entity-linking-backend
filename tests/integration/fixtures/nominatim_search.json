@@ -1,0 +1,15 @@
+[
+  {
+    "osm_type": "way",
+    "osm_id": 123,
+    "display_name": "Kerkstraat, Gent",
+    "lat": "51.05",
+    "lon": "3.72",
+    "address": {
+      "road": "Kerkstraat",
+      "city": "Gent"
+    },
+    "type": "residential",
+    "class": "highway"
+  }
+]
