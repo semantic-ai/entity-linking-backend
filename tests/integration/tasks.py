@@ -1,5 +1,6 @@
 """Seed tasks and run them the way the service does."""
 import pathlib
+import re
 from collections import defaultdict
 
 from decide_ai_service_base.sparql_config import GRAPHS, JOB_STATUSES
@@ -56,6 +57,17 @@ SELECT ?link WHERE {
 }
 """
 
+SEARCH_SCORES = PREFIXES + """
+SELECT ?score WHERE {
+  GRAPH <%s> {
+    ?annotation oa:hasTarget <%s> ;
+                oa:hasBody ?statement ;
+                <http://mu.semte.ch/vocabularies/ext/muSearchScore> ?score .
+    ?statement rdf:predicate skos:exactMatch .
+  }
+}
+"""
+
 ENTITY = "SELECT ?p ?o WHERE { GRAPH <%s> { <%s> ?p ?o } }"
 
 WKT = PREFIXES + """
@@ -102,6 +114,10 @@ def links(target_uri: str) -> list[str]:
     return [row["link"]["value"] for row in bindings(LINKS % (GRAPHS["ai"], target_uri))]
 
 
+def search_scores(target_uri: str) -> list[float]:
+    return [float(row["score"]["value"]) for row in bindings(SEARCH_SCORES % (GRAPHS["ai"], target_uri))]
+
+
 def entity(entity_uri: str) -> set[tuple[str, str]]:
     return {(row["p"]["value"], row["o"]["value"]) for row in bindings(ENTITY % (GRAPHS["ai"], entity_uri))}
 
@@ -109,3 +125,8 @@ def entity(entity_uri: str) -> set[tuple[str, str]]:
 def wkt(entity_uri: str) -> str:
     [row] = bindings(WKT % (GRAPHS["ai"], entity_uri))
     return row["wkt"]["value"]
+
+
+def coordinates(entity_uri: str) -> set[float]:
+    # Virtuoso rewrites the literal and swaps the axes of EPSG:4326 coordinates, so only the values compare.
+    return {float(n) for n in re.findall(r"-?\d+\.\d+", wkt(entity_uri))}

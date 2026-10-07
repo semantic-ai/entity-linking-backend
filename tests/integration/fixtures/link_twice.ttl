@@ -1,0 +1,55 @@
+@prefix adms: <http://www.w3.org/ns/adms#> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix mu:   <http://mu.semte.ch/vocabularies/core/> .
+@prefix oa:   <http://www.w3.org/ns/oa#> .
+@prefix org:  <http://www.w3.org/ns/org#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix task: <http://redpencil.data.gift/vocabularies/tasks/> .
+
+<http://example.org/test/task/link-twice-1>
+    a task:Task ;
+    mu:uuid "test-task-link-twice-1" ;
+    adms:status <http://redpencil.data.gift/id/concept/JobStatus/scheduled> ;
+    task:operation <http://lblod.data.gift/id/jobs/concept/TaskOperation/named-entity-linking> ;
+    dct:isPartOf <http://example.org/test/job/link-twice> ;
+    task:inputContainer <http://example.org/test/container/link-twice-1> .
+
+<http://example.org/test/container/link-twice-1>
+    task:hasResource <http://example.org/test/annotation/link-twice> .
+
+<http://example.org/test/task/link-twice-2>
+    a task:Task ;
+    mu:uuid "test-task-link-twice-2" ;
+    adms:status <http://redpencil.data.gift/id/concept/JobStatus/scheduled> ;
+    task:operation <http://lblod.data.gift/id/jobs/concept/TaskOperation/named-entity-linking> ;
+    dct:isPartOf <http://example.org/test/job/link-twice> ;
+    task:inputContainer <http://example.org/test/container/link-twice-2> .
+
+<http://example.org/test/container/link-twice-2>
+    task:hasResource <http://example.org/test/annotation/link-twice> .
+
+<http://example.org/test/task/link-twice-first>
+    a task:Task ;
+    dct:isPartOf <http://example.org/test/job/link-twice> ;
+    task:index "0" ;
+    task:inputContainer <http://example.org/test/container/link-twice-first> .
+
+<http://example.org/test/container/link-twice-first>
+    task:hasResource <http://example.org/test/governing-unit/gent> .
+
+<http://example.org/test/governing-unit/gent>
+    skos:prefLabel "Gent" .
+
+<http://example.org/test/annotation/link-twice>
+    oa:motivatedBy oa:linking ;
+    oa:hasBody <http://example.org/test/statement/link-twice> ;
+    oa:hasTarget <http://example.org/test/target/link-twice> .
+
+<http://example.org/test/statement/link-twice>
+    rdf:object <http://example.org/test/entity/link-twice> .
+
+<http://example.org/test/entity/link-twice>
+    a org:Organization ;
+    rdfs:label "OCMW" .
