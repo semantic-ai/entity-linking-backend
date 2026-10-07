@@ -1,0 +1,5 @@
+# Unit-test dependencies. The integration tests run inside the built image and
+# use requirements.txt instead.
+pytest==9.1.1
+rdflib==7.1.4
+shapely==2.1.2
